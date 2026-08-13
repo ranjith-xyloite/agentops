@@ -1,0 +1,4 @@
+You: Traceback (most recent call last):
+  File "/home/ranjith/devops-agent/agent.py", line 4, in <module>
+    query = input("You: ")
+EOFError: EOF when reading a line

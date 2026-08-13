@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "devops-agent": {
+      "command": "/home/ranjith/devops-agent/.venv/bin/python",
+      "args": [
+        "/home/ranjith/devops-agent/server.py"
+      ]
+    }
+  }
+}
