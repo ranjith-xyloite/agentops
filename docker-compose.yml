@@ -1,7 +1,8 @@
-version: '3.8'
 services:
   postgres:
-    image: postgres:15
+    image: postgres:15-alpine
+    container_name: agentops-postgres
+    restart: unless-stopped
     environment:
       POSTGRES_USER: agentops
       POSTGRES_PASSWORD: agentops
@@ -10,26 +11,55 @@ services:
       - postgres-data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentops -d agentops"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: agentops-backend
+    restart: unless-stopped
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     environment:
       - DATABASE_URL=postgresql+asyncpg://agentops:agentops@postgres:5432/agentops
-      - LLM_PROVIDER=${LLM_PROVIDER}
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL}
-      - OLLAMA_MODEL=${OLLAMA_MODEL}
+      - LLM_PROVIDER=ollama
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OLLAMA_MODEL=qwen3
+      - SECRET_KEY=agentops_jwt_secret_key_32_bytes_super_secure_2026_phase4
+      - APP_HOST=0.0.0.0
+      - APP_PORT=8000
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8000:8000"
-    volumes:
-      - ./backend:/app
 
-  # Optional Ollama service (if running locally via provided image)
-  # ollama:
-  #   image: ollama/ollama:latest
-  #   ports:
-  #     - "11434:11434"
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: agentops-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    container_name: agentops-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    depends_on:
+      - backend
 
 volumes:
   postgres-data:

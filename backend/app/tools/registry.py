@@ -1,5 +1,5 @@
 from typing import Dict, Callable, Any
-from app.tools import deployment
+from app.tools import deployment, docker_tools
 
 ALLOWED_TOOLS = {
     "deploy_frontend",
@@ -11,7 +11,10 @@ ALLOWED_TOOLS = {
 
 TOOL_MAP: Dict[str, Callable[..., Any]] = {
     "deploy_frontend": deployment.deploy_frontend,
-    # backend deploy could be added later
+    "deploy_backend": docker_tools.deploy_backend,
+    "docker_status": docker_tools.docker_status,
+    "restart_container": docker_tools.restart_container,
+    "server_health_check": docker_tools.server_health_check,
 }
 
 def get_tool(tool_name: str):
