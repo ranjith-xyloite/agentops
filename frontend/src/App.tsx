@@ -248,11 +248,6 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleTriggerHealthCheck = async (envName: string) => {
-    setActiveTab('console');
-    await handleSendMessage(`Run server health checks on ${envName}`);
-  };
-
   const handleTriggerDeploy = async (projectName: string, component: string, env: string) => {
     setActiveTab('console');
     await handleSendMessage(`Deploy ${projectName} ${component} branch main to ${env}`);
@@ -367,7 +362,6 @@ export const App: React.FC = () => {
             onAddServer={handleAddServer}
             onUpdateServer={handleUpdateServer}
             onDeleteServer={handleDeleteServer}
-            onTriggerHealthCheck={handleTriggerHealthCheck}
           />
         )}
 

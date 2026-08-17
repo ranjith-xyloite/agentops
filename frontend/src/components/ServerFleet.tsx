@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Server as ServerIcon, Plus, Trash2, Activity, Key, Lock, Eye, EyeOff, CheckCircle2, AlertCircle, RefreshCw, Edit3, X } from 'lucide-react';
-import { Server, ServerTestResult } from '../types';
-import { testServerConnectionApi, testExistingServerConnectionApi } from '../services/api';
+import { Server, ServerTestResult, ServerHealthAuditResult } from '../types';
+import { testServerConnectionApi, testExistingServerConnectionApi, auditServerHealthApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 interface ServerFleetProps {
@@ -10,7 +10,6 @@ interface ServerFleetProps {
   onAddServer: (server: Omit<Server, 'id' | 'environment_name'>) => Promise<void>;
   onUpdateServer?: (serverId: number, server: Partial<Server>) => Promise<void>;
   onDeleteServer: (serverId: number) => Promise<void>;
-  onTriggerHealthCheck: (targetName: string) => void;
 }
 
 export const ServerFleet: React.FC<ServerFleetProps> = ({
@@ -18,7 +17,6 @@ export const ServerFleet: React.FC<ServerFleetProps> = ({
   onAddServer,
   onUpdateServer,
   onDeleteServer,
-  onTriggerHealthCheck,
 }) => {
   const { role } = useAuth();
   const isAdmin = role === 'admin';
@@ -53,6 +51,33 @@ export const ServerFleet: React.FC<ServerFleetProps> = ({
   // Node Card Test State
   const [testingServerId, setTestingServerId] = useState<number | null>(null);
   const [serverTestResults, setServerTestResults] = useState<Record<number, ServerTestResult>>({});
+
+  // Single Server Health Audit Modal State
+  const [auditingServer, setAuditingServer] = useState<Server | null>(null);
+  const [isAuditing, setIsAuditing] = useState(false);
+  const [auditResult, setAuditResult] = useState<ServerHealthAuditResult | null>(null);
+
+  const handleOpenAuditModal = async (server: Server) => {
+    setAuditingServer(server);
+    setIsAuditing(true);
+    setAuditResult(null);
+    try {
+      const res = await auditServerHealthApi(server.id);
+      setAuditResult(res);
+    } catch (err: any) {
+      setAuditResult({
+        server_id: server.id,
+        server_name: server.name,
+        hostname: server.hostname,
+        success: false,
+        status: 'UNREACHABLE',
+        logs: [`❌ Health probe failed to connect: ${err.message || err}`],
+        checked_at: new Date().toISOString()
+      });
+    } finally {
+      setIsAuditing(false);
+    }
+  };
 
   const startEditingServer = (s: Server) => {
     setEditingServer(s);
@@ -587,10 +612,11 @@ export const ServerFleet: React.FC<ServerFleetProps> = ({
                   )}
                   <button
                     className="btn btn-secondary btn-sm"
-                    style={{ flex: 1 }}
-                    onClick={() => onTriggerHealthCheck(s.name)}
-                    title="Run real-time health audit"
+                    style={{ flex: 1, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                    onClick={() => handleOpenAuditModal(s)}
+                    title={`Run real-time health audit on ${s.name}`}
                   >
+                    <Activity size={12} style={{ color: 'var(--accent-cyan)' }} />
                     Health Audit
                   </button>
                   {isAdmin && (
@@ -608,6 +634,173 @@ export const ServerFleet: React.FC<ServerFleetProps> = ({
           })}
         </div>
       </div>
+
+      {/* Dedicated Single Server Live Health Audit Window / Modal */}
+      {auditingServer && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0, 0, 0, 0.75)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: 20
+        }}>
+          <div style={{
+            background: 'var(--bg-secondary)',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: 'var(--radius-lg)',
+            width: '100%',
+            maxWidth: 680,
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5)',
+            overflow: 'hidden'
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              padding: '16px 20px',
+              borderBottom: '1px solid var(--border-subtle)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              background: 'var(--bg-primary)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{
+                  padding: 8,
+                  borderRadius: 'var(--radius-md)',
+                  background: 'rgba(6, 182, 212, 0.1)',
+                  color: 'var(--accent-cyan)'
+                }}>
+                  <Activity size={18} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '15px', color: 'var(--text-primary)', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    Health Audit: {auditingServer.name}
+                    {auditResult && (
+                      <span className={`badge ${auditResult.success ? 'badge-success' : 'badge-danger'}`} style={{ fontSize: '10.5px' }}>
+                        {auditResult.status}
+                      </span>
+                    )}
+                  </h3>
+                  <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, marginTop: 2 }}>
+                    Dedicated live probe for node <span className="font-mono">{auditingServer.hostname}:{auditingServer.port}</span>
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => handleOpenAuditModal(auditingServer)}
+                  disabled={isAuditing}
+                  title="Re-run audit"
+                >
+                  <RefreshCw size={13} className={isAuditing ? 'spin' : ''} />
+                  {isAuditing ? 'Auditing...' : 'Re-run Probe'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setAuditingServer(null)}
+                  style={{ padding: '6px' }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Content */}
+            <div style={{ padding: 20, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {isAuditing && !auditResult ? (
+                <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>
+                  <RefreshCw size={32} className="spin" style={{ color: 'var(--accent-cyan)', marginBottom: 12 }} />
+                  <p style={{ fontSize: '13px' }}>Executing live diagnostic probes on {auditingServer.name}...</p>
+                  <p style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>Testing SSH handshake, CPU, RAM, Disk, and Docker daemon</p>
+                </div>
+              ) : auditResult ? (
+                <>
+                  {/* System Metrics Cards */}
+                  {auditResult.success && (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10 }}>
+                      <div style={{ background: 'var(--bg-primary)', padding: '10px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+                        <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>⚡ CPU Load</span>
+                        <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', marginTop: 2 }}>{auditResult.cpu_usage || 'Active'}</div>
+                      </div>
+                      <div style={{ background: 'var(--bg-primary)', padding: '10px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+                        <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>🧠 Memory Usage</span>
+                        <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', marginTop: 2 }}>{auditResult.memory_usage || 'Nominal'}</div>
+                      </div>
+                      <div style={{ background: 'var(--bg-primary)', padding: '10px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+                        <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>💾 Disk Space</span>
+                        <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', marginTop: 2 }}>{auditResult.disk_usage || 'Nominal'}</div>
+                      </div>
+                      <div style={{ background: 'var(--bg-primary)', padding: '10px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+                        <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>🐳 Docker Daemon</span>
+                        <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent-cyan)', marginTop: 2 }}>{auditResult.docker_status || 'Online'}</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Terminal Log Output Window */}
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        Live Probe Terminal Output (Single Node Stream)
+                      </span>
+                      <span style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>
+                        Probe time: {new Date(auditResult.checked_at).toLocaleTimeString()}
+                      </span>
+                    </div>
+
+                    <div className="font-mono" style={{
+                      background: '#090d16',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      borderRadius: 'var(--radius-md)',
+                      padding: 14,
+                      fontSize: '12px',
+                      color: '#e2e8f0',
+                      lineHeight: '1.7',
+                      maxHeight: 240,
+                      overflowY: 'auto'
+                    }}>
+                      {auditResult.logs.map((logLine, idx) => (
+                        <div key={idx} style={{
+                          color: logLine.startsWith('❌') ? 'var(--status-error)' : logLine.startsWith('✅') ? 'var(--status-success)' : logLine.startsWith('🎉') ? 'var(--accent-cyan)' : 'inherit'
+                        }}>
+                          {logLine}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : null}
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{
+              padding: '12px 20px',
+              borderTop: '1px solid var(--border-subtle)',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              background: 'var(--bg-primary)'
+            }}>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setAuditingServer(null)}
+              >
+                Close Audit Window
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

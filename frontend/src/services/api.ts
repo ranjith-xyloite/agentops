@@ -17,6 +17,7 @@ import {
   PolicyRule,
   LLMProviderStatus,
   ServerTestResult,
+  ServerHealthAuditResult,
   PreflightCheckResult,
 } from '../types';
 
@@ -235,6 +236,12 @@ export async function testServerConnectionApi(data: {
 
 export async function testExistingServerConnectionApi(serverId: number): Promise<ServerTestResult> {
   return request(`${API_BASE}/servers/${serverId}/test-connection`, {
+    method: 'POST',
+  });
+}
+
+export async function auditServerHealthApi(serverId: number): Promise<ServerHealthAuditResult> {
+  return request(`${API_BASE}/servers/${serverId}/health-check`, {
     method: 'POST',
   });
 }

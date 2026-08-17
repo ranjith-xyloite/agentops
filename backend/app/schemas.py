@@ -119,6 +119,21 @@ class ServerTestConnectionResponse(BaseModel):
     system_info: Optional[str] = None
 
 
+class ServerHealthAuditResponse(BaseModel):
+    server_id: int
+    server_name: str
+    hostname: str
+    success: bool
+    status: str
+    cpu_usage: Optional[str] = None
+    memory_usage: Optional[str] = None
+    disk_usage: Optional[str] = None
+    docker_status: Optional[str] = None
+    uptime: Optional[str] = None
+    logs: List[str] = []
+    checked_at: str
+
+
 class PreflightCheckRequest(BaseModel):
     project_id: int
     environment_id: int

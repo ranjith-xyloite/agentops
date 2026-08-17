@@ -133,6 +133,21 @@ export interface ServerTestResult {
   system_info?: string;
 }
 
+export interface ServerHealthAuditResult {
+  server_id: number;
+  server_name: string;
+  hostname: string;
+  success: boolean;
+  status: string;
+  cpu_usage?: string;
+  memory_usage?: string;
+  disk_usage?: string;
+  docker_status?: string;
+  uptime?: string;
+  logs: string[];
+  checked_at: string;
+}
+
 export interface PreflightCheckResult {
   success: boolean;
   server_reachable: boolean;
