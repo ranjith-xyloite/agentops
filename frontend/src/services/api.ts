@@ -267,6 +267,16 @@ export async function deleteProject(projectId: number): Promise<void> {
   });
 }
 
+export async function updateProject(
+  projectId: number,
+  data: { name?: string; description?: string; repository_url?: string }
+): Promise<Project> {
+  return request(`${API_BASE}/projects/${projectId}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
 export async function createProjectDeployment(
   projectId: number,
   data: {

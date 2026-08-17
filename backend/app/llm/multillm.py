@@ -131,28 +131,47 @@ class MultiLLMClient(LLMClient):
         m = msg.lower()
         projects = context.get("projects", ["agentops", "ecommerce-app", "crm-system"])
         environments = context.get("environments", ["dev", "qa", "uat", "production", "prod"])
+        servers = context.get("servers", [])
 
-        matched_project = next((p for p in projects if p.lower() in m), "agentops")
-        matched_env = next((e for e in environments if e.lower() in m), "dev")
+        matched_project = next((p for p in projects if p.lower() in m), None)
+        if not matched_project:
+            p_match = re.search(r'(?:deploy|for|project)\s+([a-zA-Z0-9_\-]+)', msg, re.I)
+            if p_match:
+                cand = p_match.group(1).strip()
+                if cand.lower() not in ["frontend", "backend", "full", "pipeline", "to", "branch", "on", "in", "the", "a"]:
+                    matched_project = cand
+        if not matched_project:
+            matched_project = "agentops"
+        matched_env = next((e for e in environments if e.lower() in m), None)
         if matched_env == "prod":
             matched_env = "production"
 
+        matched_server = next((s for s in servers if s.lower() in m), None)
+        if not matched_server:
+            # Check for patterns like "on KC-server" or "server KC-server"
+            s_match = re.search(r'(?:server|node|host|on)\s+([a-zA-Z0-9_\-]+(?:-server|\.internal)?)', msg, re.I)
+            if s_match:
+                candidate = s_match.group(1).strip()
+                if candidate.lower() not in ["uat", "qa", "dev", "prod", "production", "test"]:
+                    matched_server = candidate
+
         # Check for Multi-step Full Deployment Pipeline (DAG)
         if any(w in m for w in ["full pipeline", "ci/cd pipeline", "full deployment", "safe deploy", "pipeline"]):
+            effective_env = matched_env or "production"
             return ToolRequest(
                 tool="deploy_backend",
                 requires_confirmation=True,
                 confidence=0.98,
-                parameters={"project": matched_project, "environment": matched_env, "component": "backend"},
+                parameters={"project": matched_project, "environment": effective_env, "component": "backend"},
                 steps=[
                     WorkflowStep(
                         tool="server_health_check",
-                        parameters={"environment": matched_env},
+                        parameters={"environment": effective_env},
                         description="Pre-deployment environment health audit"
                     ),
                     WorkflowStep(
                         tool="deploy_backend",
-                        parameters={"project": matched_project, "environment": matched_env, "component": "backend"},
+                        parameters={"project": matched_project, "environment": effective_env, "component": "backend"},
                         description="Pull remote repository & execute deployment script",
                         rollback_tool="restart_container",
                         rollback_parameters={"container_name": f"{matched_project}-backend-prev"}
@@ -166,7 +185,7 @@ class MultiLLMClient(LLMClient):
                     ),
                     WorkflowStep(
                         tool="server_health_check",
-                        parameters={"environment": matched_env},
+                        parameters={"environment": effective_env},
                         description="Post-deployment verification and SLA health check"
                     )
                 ]
@@ -176,7 +195,7 @@ class MultiLLMClient(LLMClient):
         if "deploy" in m and "frontend" in m:
             return ToolRequest(
                 tool="deploy_frontend",
-                parameters={"project": matched_project, "environment": matched_env, "component": "frontend"},
+                parameters={"project": matched_project, "environment": matched_env or "uat", "component": "frontend"},
                 requires_confirmation=True,
                 confidence=0.95
             )
@@ -185,25 +204,37 @@ class MultiLLMClient(LLMClient):
         if "deploy" in m and ("backend" in m or "api" in m):
             return ToolRequest(
                 tool="deploy_backend",
-                parameters={"project": matched_project, "environment": matched_env, "component": "backend"},
+                parameters={"project": matched_project, "environment": matched_env or "uat", "component": "backend"},
                 requires_confirmation=True,
                 confidence=0.95
             )
 
         # Docker Status
         if "docker" in m or "container" in m or "status" in m or "ps" in m:
+            docker_params: Dict[str, Any] = {"project": matched_project}
+            if matched_server:
+                docker_params["server"] = matched_server
+            if matched_env:
+                docker_params["environment"] = matched_env
             return ToolRequest(
                 tool="docker_status",
-                parameters={"project": matched_project, "environment": matched_env},
+                parameters=docker_params,
                 requires_confirmation=False,
                 confidence=0.95
             )
 
         # Health Check
-        if "health" in m or "ping" in m or "check" in m:
+        if "health" in m or "ping" in m or "check" in m or "audit" in m:
+            health_params: Dict[str, Any] = {}
+            if matched_server:
+                health_params["server"] = matched_server
+            if matched_env:
+                health_params["environment"] = matched_env
+            if not matched_server and not matched_env:
+                health_params["environment"] = "uat"
             return ToolRequest(
                 tool="server_health_check",
-                parameters={"environment": matched_env},
+                parameters=health_params,
                 requires_confirmation=False,
                 confidence=0.95
             )
@@ -211,17 +242,27 @@ class MultiLLMClient(LLMClient):
         # Restart Container
         if "restart" in m:
             c_name = f"{matched_project}-backend"
+            restart_params: Dict[str, Any] = {"container_name": c_name}
+            if matched_server:
+                restart_params["server"] = matched_server
+            if matched_env:
+                restart_params["environment"] = matched_env
             return ToolRequest(
                 tool="restart_container",
-                parameters={"container_name": c_name},
+                parameters=restart_params,
                 requires_confirmation=True,
                 confidence=0.90
             )
 
         # Default fallback to server health check
+        fallback_params: Dict[str, Any] = {}
+        if matched_server:
+            fallback_params["server"] = matched_server
+        if matched_env:
+            fallback_params["environment"] = matched_env
         return ToolRequest(
             tool="server_health_check",
-            parameters={"environment": matched_env},
+            parameters=fallback_params,
             requires_confirmation=False,
             confidence=0.80
         )

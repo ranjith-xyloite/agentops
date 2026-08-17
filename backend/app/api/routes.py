@@ -16,7 +16,7 @@ from app.models.models import (
 )
 from app.schemas import (
     ChatRequest, ChatResponse, TaskOut, TaskExecutionOut, ToolRequest,
-    ServerOut, ServerCreate, ServerUpdate, ProjectOut, ProjectCreate, ProjectDeploymentCreate, ProjectDeploymentOut,
+    ServerOut, ServerCreate, ServerUpdate, ProjectOut, ProjectCreate, ProjectUpdate, ProjectDeploymentCreate, ProjectDeploymentOut,
     EnvironmentOut, StatsOut,
     UserLogin, UserCreate, UserUpdate, UserOut, TokenResponse, TokenRefreshRequest,
     ProjectMemberAssign, APIKeyCreate, APIKeyOut, APIKeyCreatedOut, AuditLogOut,
@@ -508,11 +508,19 @@ async def chat_endpoint(
     db: AsyncSession = Depends(get_session)
 ):
     accessible_projects = await get_user_accessible_projects(current_user, db)
+    servers_res = await db.execute(select(Server))
+    server_names = [s.name for s in servers_res.scalars().all()]
+    envs_res = await db.execute(select(Environment))
+    env_names = [e.name for e in envs_res.scalars().all()]
+
     context = {
         "user_id": current_user.id,
         "username": current_user.username,
         "role": current_user.role.value,
         "allowed_projects": accessible_projects,
+        "projects": accessible_projects,
+        "servers": server_names,
+        "environments": env_names,
         "allowed_tools": [
             "deploy_frontend", "deploy_backend", "docker_status",
             "restart_container", "server_health_check"
@@ -753,6 +761,36 @@ async def create_project(
         {"name": p.name}, request.client.host if request.client else None
     )
     return p
+
+
+@router.put("/projects/{project_id}", response_model=ProjectOut)
+async def update_project(
+    project_id: int,
+    payload: ProjectUpdate,
+    request: Request,
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
+    session: AsyncSession = Depends(get_session)
+):
+    project = await session.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    if payload.name is not None:
+        project.name = payload.name
+    if payload.description is not None:
+        project.description = payload.description
+    if payload.repository_url is not None:
+        project.repository_url = payload.repository_url
+
+    await session.commit()
+    await session.refresh(project)
+
+    await log_audit_event(
+        session, current_user, "update_project", "project", str(project.id),
+        {"name": project.name}, request.client.host if request.client else None
+    )
+    return project
+
 
 
 @router.post("/projects/{project_id}/deployments", response_model=ProjectDeploymentOut)

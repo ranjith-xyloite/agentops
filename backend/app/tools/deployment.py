@@ -20,7 +20,9 @@ async def deploy_frontend(task_id: int, parameters: Dict[str, Any]) -> Dict[str,
         stmt = (
             select(ProjectDeployment)
             .join(Project, Project.id == ProjectDeployment.project_id)
+            .join(Environment, Environment.id == ProjectDeployment.environment_id)
             .where(func.lower(ProjectDeployment.component) == component.lower())
+            .where(func.lower(Environment.name) == environment_name.lower())
         )
         if project_name:
             stmt = stmt.where(func.lower(Project.name).contains(project_name.lower()) | (func.lower(Project.name) == project_name.lower()))

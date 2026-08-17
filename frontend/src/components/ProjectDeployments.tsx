@@ -9,6 +9,7 @@ interface ProjectDeploymentsProps {
   servers?: Server[];
   onTriggerDeploy: (projectName: string, component: string, env: string) => void;
   onAddProject?: (projectData: { name: string; description?: string; repository_url?: string }) => Promise<Project>;
+  onUpdateProject?: (projectId: number, projectData: { name?: string; description?: string; repository_url?: string }) => Promise<void>;
   onDeleteProject?: (projectId: number) => Promise<void>;
   onAddDeployment?: (projectId: number, data: {
     environment_id: number;
@@ -35,6 +36,7 @@ export const ProjectDeployments: React.FC<ProjectDeploymentsProps> = ({
   servers = [],
   onTriggerDeploy,
   onAddProject,
+  onUpdateProject,
   onDeleteProject,
   onAddDeployment,
   onUpdateDeployment,
@@ -45,8 +47,10 @@ export const ProjectDeployments: React.FC<ProjectDeploymentsProps> = ({
   const isOperator = role === 'operator' || role === 'admin';
 
   const [showAddProjectModal, setShowAddProjectModal] = useState(false);
+  const [showEditProjectModal, setShowEditProjectModal] = useState(false);
   const [showAddFlowModal, setShowAddFlowModal] = useState(false);
   const [editingFlow, setEditingFlow] = useState<ProjectDeploymentType | null>(null);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
 
   // Add Project Form State
   const [projectName, setProjectName] = useState('');
@@ -56,6 +60,11 @@ export const ProjectDeployments: React.FC<ProjectDeploymentsProps> = ({
   const [provisionFrontend, setProvisionFrontend] = useState(true);
   const [provisionBackend, setProvisionBackend] = useState(true);
   const [createServerId, setCreateServerId] = useState<number | undefined>(servers[0]?.id);
+
+  // Edit Project Form State
+  const [editProjectName, setEditProjectName] = useState('');
+  const [editProjectDesc, setEditProjectDesc] = useState('');
+  const [editProjectRepo, setEditProjectRepo] = useState('');
 
   // Add Flow Form State
   const [targetProjectId, setTargetProjectId] = useState<number>(projects[0]?.id || 1);
@@ -113,6 +122,33 @@ export const ProjectDeployments: React.FC<ProjectDeploymentsProps> = ({
       setShowAddProjectModal(false);
     } catch (err: any) {
       alert(`Failed to create project: ${err.message || err}`);
+    }
+  };
+
+  const startEditProject = (project: Project) => {
+    setEditingProject(project);
+    setEditProjectName(project.name);
+    setEditProjectDesc(project.description || '');
+    setEditProjectRepo(project.repository_url || '');
+    setShowEditProjectModal(true);
+    setShowAddProjectModal(false);
+    setShowAddFlowModal(false);
+    setEditingFlow(null);
+  };
+
+  const handleUpdateProjectSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProject || !onUpdateProject) return;
+    try {
+      await onUpdateProject(editingProject.id, {
+        name: editProjectName.trim() || undefined,
+        description: editProjectDesc.trim() || undefined,
+        repository_url: editProjectRepo.trim() || undefined,
+      });
+      setShowEditProjectModal(false);
+      setEditingProject(null);
+    } catch (err: any) {
+      alert(`Failed to update project: ${err.message || err}`);
     }
   };
 
@@ -195,8 +231,10 @@ export const ProjectDeployments: React.FC<ProjectDeploymentsProps> = ({
               className="btn btn-secondary btn-sm"
               onClick={() => {
                 setShowAddProjectModal(!showAddProjectModal);
+                setShowEditProjectModal(false);
                 setShowAddFlowModal(false);
                 setEditingFlow(null);
+                setEditingProject(null);
               }}
             >
               <Plus size={14} />
@@ -335,6 +373,64 @@ export const ProjectDeployments: React.FC<ProjectDeploymentsProps> = ({
         </form>
       )}
 
+      {/* Edit Project Modal */}
+      {isAdmin && showEditProjectModal && editingProject && (
+        <form onSubmit={handleUpdateProjectSubmit} style={{ padding: 20, background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-subtle)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <h4 style={{ fontSize: '13px', color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Edit3 size={15} /> Edit Project Workspace: {editingProject.name}
+            </h4>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowEditProjectModal(false)}>
+              <X size={13} />
+            </button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+            <div>
+              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Project Name *</label>
+              <input
+                type="text"
+                className="chat-input"
+                style={{ width: '100%', marginTop: 4 }}
+                value={editProjectName}
+                onChange={(e) => setEditProjectName(e.target.value)}
+                required
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Git Repository URL</label>
+              <input
+                type="text"
+                className="chat-input"
+                style={{ width: '100%', marginTop: 4 }}
+                value={editProjectRepo}
+                onChange={(e) => setEditProjectRepo(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Description</label>
+              <input
+                type="text"
+                className="chat-input"
+                style={{ width: '100%', marginTop: 4 }}
+                value={editProjectDesc}
+                onChange={(e) => setEditProjectDesc(e.target.value)}
+              />
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, gridColumn: 'span 2' }}>
+              <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>
+                Save Project Details
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={() => setShowEditProjectModal(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </form>
+      )}
+
       {/* Add Flow Modal */}
       {isAdmin && showAddFlowModal && (
         <form onSubmit={handleCreateFlow} style={{ padding: 20, background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-subtle)' }}>
@@ -462,111 +558,6 @@ export const ProjectDeployments: React.FC<ProjectDeploymentsProps> = ({
         </form>
       )}
 
-      {/* Edit Flow Modal */}
-      {isAdmin && editingFlow && (
-        <form onSubmit={handleUpdateFlow} style={{ padding: 20, background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-subtle)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <h4 style={{ fontSize: '13px', color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Edit3 size={15} /> Edit Flow: {editingFlow.component}
-            </h4>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditingFlow(null)}>
-              <X size={13} />
-            </button>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
-            <div>
-              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Component Name *</label>
-              <input
-                type="text"
-                className="chat-input"
-                style={{ width: '100%', marginTop: 4 }}
-                value={editComponent}
-                onChange={(e) => setEditComponent(e.target.value)}
-                required
-              />
-            </div>
-
-            <div>
-              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Target Environment *</label>
-              <select
-                className="chat-input"
-                style={{ width: '100%', marginTop: 4, background: '#111827', color: '#f8fafc' }}
-                value={editEnvId}
-                onChange={(e) => setEditEnvId(Number(e.target.value))}
-                required
-              >
-                {environments.map((env) => (
-                  <option key={env.id} value={env.id} style={{ background: '#111827', color: '#f8fafc' }}>
-                    {env.name.toUpperCase()}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Target Fleet Server Node</label>
-              <select
-                className="chat-input"
-                style={{ width: '100%', marginTop: 4, background: '#111827', color: '#f8fafc' }}
-                value={editServerId || ''}
-                onChange={(e) => setEditServerId(e.target.value ? Number(e.target.value) : undefined)}
-              >
-                <option value="" style={{ background: '#111827', color: '#f8fafc' }}>Auto-resolve from fleet</option>
-                {servers.map((s) => (
-                  <option key={s.id} value={s.id} style={{ background: '#111827', color: '#f8fafc' }}>
-                    {s.name} ({s.hostname}:{s.port} - {s.username})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Remote Server Path (Location) *</label>
-              <input
-                type="text"
-                className="chat-input font-mono"
-                style={{ width: '100%', marginTop: 4 }}
-                value={editRepoPath}
-                onChange={(e) => setEditRepoPath(e.target.value)}
-                required
-              />
-            </div>
-
-            <div>
-              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Deployment Script / Command *</label>
-              <input
-                type="text"
-                className="chat-input font-mono"
-                style={{ width: '100%', marginTop: 4 }}
-                value={editDeployScript}
-                onChange={(e) => setEditDeployScript(e.target.value)}
-                required
-              />
-            </div>
-
-            <div style={{ gridColumn: 'span 2' }}>
-              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Health Check URL (Optional)</label>
-              <input
-                type="text"
-                className="chat-input"
-                style={{ width: '100%', marginTop: 4 }}
-                value={editHealthUrl}
-                onChange={(e) => setEditHealthUrl(e.target.value)}
-              />
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, gridColumn: 'span 2' }}>
-              <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>
-                Update Deployment Flow
-              </button>
-              <button type="button" className="btn btn-secondary" onClick={() => setEditingFlow(null)}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        </form>
-      )}
-
       {/* Projects List */}
       <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 24 }}>
         {projects.length === 0 ? (
@@ -637,6 +628,16 @@ export const ProjectDeployments: React.FC<ProjectDeploymentsProps> = ({
                         <Code size={13} />
                         {p.repository_url}
                       </a>
+                    )}
+
+                    {isAdmin && onUpdateProject && (
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => startEditProject(p)}
+                        title="Edit Project Details"
+                      >
+                        <Edit3 size={13} />
+                      </button>
                     )}
 
                     {isAdmin && onDeleteProject && (
@@ -717,7 +718,8 @@ export const ProjectDeployments: React.FC<ProjectDeploymentsProps> = ({
                               </thead>
                               <tbody>
                                 {envFlows.map((d) => (
-                                  <tr key={d.id}>
+                                  <React.Fragment key={d.id}>
+                                    <tr>
                                     <td>
                                       <strong style={{ color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center', gap: 6, fontSize: '12.5px' }}>
                                         <Layers size={13} />
@@ -793,6 +795,114 @@ export const ProjectDeployments: React.FC<ProjectDeploymentsProps> = ({
                                       </td>
                                     )}
                                   </tr>
+                                  {isAdmin && editingFlow?.id === d.id && (
+                                    <tr>
+                                      <td colSpan={isAdmin ? 7 : 6} style={{ padding: 0 }}>
+                                        <form onSubmit={handleUpdateFlow} style={{ padding: '20px 24px', background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--accent-cyan)' }}>
+                                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                                            <h4 style={{ fontSize: '13px', color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                              <Edit3 size={15} /> Edit Flow: {editingFlow.component}
+                                            </h4>
+                                            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditingFlow(null)}>
+                                              <X size={13} />
+                                            </button>
+                                          </div>
+                                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+                                            <div>
+                                              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Component Name *</label>
+                                              <input
+                                                type="text"
+                                                className="chat-input"
+                                                style={{ width: '100%', marginTop: 4 }}
+                                                value={editComponent}
+                                                onChange={(e) => setEditComponent(e.target.value)}
+                                                required
+                                              />
+                                            </div>
+
+                                            <div>
+                                              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Target Environment *</label>
+                                              <select
+                                                className="chat-input"
+                                                style={{ width: '100%', marginTop: 4, background: '#111827', color: '#f8fafc' }}
+                                                value={editEnvId}
+                                                onChange={(e) => setEditEnvId(Number(e.target.value))}
+                                                required
+                                              >
+                                                {environments.map((env) => (
+                                                  <option key={env.id} value={env.id} style={{ background: '#111827', color: '#f8fafc' }}>
+                                                    {env.name.toUpperCase()}
+                                                  </option>
+                                                ))}
+                                              </select>
+                                            </div>
+
+                                            <div>
+                                              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Target Fleet Server Node</label>
+                                              <select
+                                                className="chat-input"
+                                                style={{ width: '100%', marginTop: 4, background: '#111827', color: '#f8fafc' }}
+                                                value={editServerId || ''}
+                                                onChange={(e) => setEditServerId(e.target.value ? Number(e.target.value) : undefined)}
+                                              >
+                                                <option value="" style={{ background: '#111827', color: '#f8fafc' }}>Auto-resolve from fleet</option>
+                                                {servers.map((s) => (
+                                                  <option key={s.id} value={s.id} style={{ background: '#111827', color: '#f8fafc' }}>
+                                                    {s.name} ({s.hostname}:{s.port} - {s.username})
+                                                  </option>
+                                                ))}
+                                              </select>
+                                            </div>
+
+                                            <div>
+                                              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Remote Server Path (Location) *</label>
+                                              <input
+                                                type="text"
+                                                className="chat-input font-mono"
+                                                style={{ width: '100%', marginTop: 4 }}
+                                                value={editRepoPath}
+                                                onChange={(e) => setEditRepoPath(e.target.value)}
+                                                required
+                                              />
+                                            </div>
+
+                                            <div>
+                                              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Deployment Script / Command *</label>
+                                              <input
+                                                type="text"
+                                                className="chat-input font-mono"
+                                                style={{ width: '100%', marginTop: 4 }}
+                                                value={editDeployScript}
+                                                onChange={(e) => setEditDeployScript(e.target.value)}
+                                                required
+                                              />
+                                            </div>
+
+                                            <div style={{ gridColumn: 'span 2' }}>
+                                              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Health Check URL (Optional)</label>
+                                              <input
+                                                type="text"
+                                                className="chat-input"
+                                                style={{ width: '100%', marginTop: 4 }}
+                                                value={editHealthUrl}
+                                                onChange={(e) => setEditHealthUrl(e.target.value)}
+                                              />
+                                            </div>
+
+                                            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, gridColumn: 'span 2' }}>
+                                              <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>
+                                                Update Deployment Flow
+                                              </button>
+                                              <button type="button" className="btn btn-secondary" onClick={() => setEditingFlow(null)}>
+                                                Cancel
+                                              </button>
+                                            </div>
+                                          </div>
+                                        </form>
+                                      </td>
+                                    </tr>
+                                  )}
+                                  </React.Fragment>
                                 ))}
                               </tbody>
                             </table>

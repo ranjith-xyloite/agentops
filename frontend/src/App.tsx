@@ -39,6 +39,7 @@ import {
   listProjects,
   createProject,
   deleteProject,
+  updateProject,
   createProjectDeployment,
   updateProjectDeployment,
   deleteProjectDeployment,
@@ -263,6 +264,14 @@ export const App: React.FC = () => {
     return newProj;
   };
 
+  const handleUpdateProject = async (
+    projectId: number,
+    data: { name?: string; description?: string; repository_url?: string }
+  ) => {
+    await updateProject(projectId, data);
+    await refreshAllData();
+  };
+
   const handleDeleteProject = async (projectId: number) => {
     await deleteProject(projectId);
     await refreshAllData();
@@ -370,6 +379,7 @@ export const App: React.FC = () => {
             onTriggerDeploy={handleTriggerDeploy}
             onAddProject={handleAddProject}
             onDeleteProject={handleDeleteProject}
+            onUpdateProject={handleUpdateProject}
             onAddDeployment={handleAddDeployment}
             onUpdateDeployment={handleUpdateDeployment}
             onDeleteDeployment={handleDeleteDeployment}

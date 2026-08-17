@@ -707,113 +707,6 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
         </form>
       )}
 
-      {/* Edit Flow Modal */}
-      {isAdmin && editingFlow && (
-        <form onSubmit={handleUpdateFlow} style={{ padding: 20, background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <h4 style={{ fontSize: '13px', color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Edit3 size={15} /> Edit Flow: {editingFlow.component}
-            </h4>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditingFlow(null)}>
-              <X size={13} />
-            </button>
-          </div>
-          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 14 }}>
-            Update the configuration for this deployment pipeline.
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
-            <div>
-              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Component Name *</label>
-              <input
-                type="text"
-                className="chat-input"
-                style={{ width: '100%', marginTop: 4 }}
-                value={editFlowComponent}
-                onChange={(e) => setEditFlowComponent(e.target.value)}
-                required
-              />
-            </div>
-
-            <div>
-              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Target Environment *</label>
-              <select
-                className="chat-input"
-                style={{ width: '100%', marginTop: 4, background: '#111827', color: '#f8fafc' }}
-                value={editFlowEnvId}
-                onChange={(e) => setEditFlowEnvId(Number(e.target.value))}
-                required
-              >
-                {environments.map((env) => (
-                  <option key={env.id} value={env.id} style={{ background: '#111827', color: '#f8fafc' }}>
-                    {env.name.toUpperCase()}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Target Fleet Server Node</label>
-              <select
-                className="chat-input"
-                style={{ width: '100%', marginTop: 4, background: '#111827', color: '#f8fafc' }}
-                value={editFlowServerId || ''}
-                onChange={(e) => setEditFlowServerId(e.target.value ? Number(e.target.value) : undefined)}
-              >
-                <option value="" style={{ background: '#111827', color: '#f8fafc' }}>Auto-resolve from fleet</option>
-                {servers.map((s) => (
-                  <option key={s.id} value={s.id} style={{ background: '#111827', color: '#f8fafc' }}>
-                    {s.name} ({s.hostname}:{s.port} - {s.username})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Remote Server Path (Location) *</label>
-              <input
-                type="text"
-                className="chat-input font-mono"
-                style={{ width: '100%', marginTop: 4 }}
-                value={editFlowRepoPath}
-                onChange={(e) => setEditFlowRepoPath(e.target.value)}
-                required
-              />
-            </div>
-
-            <div>
-              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Deployment Script / Command *</label>
-              <input
-                type="text"
-                className="chat-input font-mono"
-                style={{ width: '100%', marginTop: 4 }}
-                value={editFlowScript}
-                onChange={(e) => setEditFlowScript(e.target.value)}
-                required
-              />
-            </div>
-
-            <div style={{ gridColumn: 'span 2' }}>
-              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Health Check URL (Optional)</label>
-              <input
-                type="text"
-                className="chat-input"
-                style={{ width: '100%', marginTop: 4 }}
-                value={editFlowHealthUrl}
-                onChange={(e) => setEditFlowHealthUrl(e.target.value)}
-              />
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, gridColumn: 'span 2' }}>
-              <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>
-                Update Deployment Flow
-              </button>
-              <button type="button" className="btn btn-secondary" onClick={() => setEditingFlow(null)}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        </form>
-      )}
 
       {/* 2. Global Workflow Mapping Overview */}
       <div className="card-panel">
@@ -978,7 +871,8 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
                                     || servers.find((s) => s.environment_id === d.environment_id);
 
                                   return (
-                                    <tr key={d.id}>
+                                    <React.Fragment key={d.id}>
+                                      <tr>
                                       <td>
                                         <strong style={{ color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center', gap: 6, fontSize: '12px' }}>
                                           <Layers size={13} />
@@ -1037,6 +931,117 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
                                         </td>
                                       )}
                                     </tr>
+                                    {isAdmin && editingFlow?.id === d.id && (
+                                      <tr>
+                                        <td colSpan={isAdmin ? 6 : 5} style={{ padding: 0 }}>
+                                          <form onSubmit={handleUpdateFlow} style={{ padding: '20px 24px', background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--accent-cyan)' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                                              <h4 style={{ fontSize: '13px', color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                <Edit3 size={15} /> Edit Flow: {editingFlow.component}
+                                              </h4>
+                                              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditingFlow(null)}>
+                                                <X size={13} />
+                                              </button>
+                                            </div>
+                                            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 14 }}>
+                                              Update the configuration for this deployment pipeline.
+                                            </p>
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+                                              <div>
+                                                <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Component Name *</label>
+                                                <input
+                                                  type="text"
+                                                  className="chat-input"
+                                                  style={{ width: '100%', marginTop: 4 }}
+                                                  value={editFlowComponent}
+                                                  onChange={(e) => setEditFlowComponent(e.target.value)}
+                                                  required
+                                                />
+                                              </div>
+
+                                              <div>
+                                                <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Target Environment *</label>
+                                                <select
+                                                  className="chat-input"
+                                                  style={{ width: '100%', marginTop: 4, background: '#111827', color: '#f8fafc' }}
+                                                  value={editFlowEnvId}
+                                                  onChange={(e) => setEditFlowEnvId(Number(e.target.value))}
+                                                  required
+                                                >
+                                                  {environments.map((env) => (
+                                                    <option key={env.id} value={env.id} style={{ background: '#111827', color: '#f8fafc' }}>
+                                                      {env.name.toUpperCase()}
+                                                    </option>
+                                                  ))}
+                                                </select>
+                                              </div>
+
+                                              <div>
+                                                <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Target Fleet Server Node</label>
+                                                <select
+                                                  className="chat-input"
+                                                  style={{ width: '100%', marginTop: 4, background: '#111827', color: '#f8fafc' }}
+                                                  value={editFlowServerId || ''}
+                                                  onChange={(e) => setEditFlowServerId(e.target.value ? Number(e.target.value) : undefined)}
+                                                >
+                                                  <option value="" style={{ background: '#111827', color: '#f8fafc' }}>Auto-resolve from fleet</option>
+                                                  {servers.map((s) => (
+                                                    <option key={s.id} value={s.id} style={{ background: '#111827', color: '#f8fafc' }}>
+                                                      {s.name} ({s.hostname}:{s.port} - {s.username})
+                                                    </option>
+                                                  ))}
+                                                </select>
+                                              </div>
+
+                                              <div>
+                                                <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Remote Server Path (Location) *</label>
+                                                <input
+                                                  type="text"
+                                                  className="chat-input font-mono"
+                                                  style={{ width: '100%', marginTop: 4 }}
+                                                  value={editFlowRepoPath}
+                                                  onChange={(e) => setEditFlowRepoPath(e.target.value)}
+                                                  required
+                                                />
+                                              </div>
+
+                                              <div>
+                                                <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Deployment Script / Command *</label>
+                                                <input
+                                                  type="text"
+                                                  className="chat-input font-mono"
+                                                  style={{ width: '100%', marginTop: 4 }}
+                                                  value={editFlowScript}
+                                                  onChange={(e) => setEditFlowScript(e.target.value)}
+                                                  required
+                                                />
+                                              </div>
+
+                                              <div style={{ gridColumn: 'span 2' }}>
+                                                <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Health Check URL (Optional)</label>
+                                                <input
+                                                  type="text"
+                                                  className="chat-input"
+                                                  style={{ width: '100%', marginTop: 4 }}
+                                                  value={editFlowHealthUrl}
+                                                  onChange={(e) => setEditFlowHealthUrl(e.target.value)}
+                                                />
+                                              </div>
+
+                                              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, gridColumn: 'span 2' }}>
+                                                <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>
+                                                  Update Deployment Flow
+                                                </button>
+                                                <button type="button" className="btn btn-secondary" onClick={() => setEditingFlow(null)}>
+                                                  Cancel
+                                                </button>
+                                              </div>
+                                            </div>
+                                          </form>
+                                        </td>
+                                      </tr>
+                                    )}
+                                    </React.Fragment>
                                   );
                                 })}
                               </tbody>

@@ -168,6 +168,12 @@ class ProjectCreate(BaseModel):
     repository_url: Optional[str] = None
 
 
+class ProjectUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    repository_url: Optional[str] = None
+
+
 class ProjectDeploymentCreate(BaseModel):
     environment_id: int
     component: str

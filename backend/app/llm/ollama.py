@@ -20,7 +20,7 @@ Never produce shell commands. Never invent new tools. Only pick from allowed_too
 class OllamaClient(LLMClient):
     async def parse(self, user_message: str, context: Dict[str, Any]) -> ToolRequest:
         if not settings.OLLAMA_BASE_URL:
-            return self._mock_parse(user_message)
+            return self._mock_parse(user_message, context)
 
         payload = {
             "model": settings.OLLAMA_MODEL,
@@ -52,16 +52,33 @@ class OllamaClient(LLMClient):
                 if m:
                     parsed_data = json.loads(m.group(0))
                 else:
-                    return self._mock_parse(user_message)
+                    return self._mock_parse(user_message, context)
             return ToolRequest(**parsed_data)
 
         except Exception as e:
             logger.warning(f"Ollama API request failed ({e}), falling back to deterministic parser.")
-            return self._mock_parse(user_message)
+            return self._mock_parse(user_message, context)
 
-    def _mock_parse(self, user_message: str) -> ToolRequest:
+    def _mock_parse(self, user_message: str, context: Any = None) -> ToolRequest:
         """Deterministic heuristic fallback parser for fast local execution."""
         msg = user_message.lower()
+        projects = (context or {}).get("projects", []) if isinstance(context, dict) else []
+        matched_project = None
+        for p in projects:
+            if p.lower() in msg:
+                matched_project = p
+                break
+
+        if not matched_project:
+            p_match = re.search(r'(?:deploy|for|project)\s+([a-zA-Z0-9_\-]+)', msg, re.I)
+            if p_match:
+                cand = p_match.group(1).strip()
+                if cand.lower() not in ["frontend", "backend", "full", "pipeline", "to", "branch", "on", "in", "the", "a"]:
+                    matched_project = cand
+
+        if not matched_project:
+            matched_project = "agentops"
+
         out = {
             "tool": None,
             "parameters": {},
@@ -78,7 +95,7 @@ class OllamaClient(LLMClient):
                 tool="deploy_backend",
                 requires_confirmation=True,
                 confidence=0.98,
-                parameters={"project": "agentops", "environment": "production", "component": "backend"},
+                parameters={"project": matched_project, "environment": "production", "component": "backend"},
                 steps=[
                     WorkflowStep(
                         tool="server_health_check",
@@ -87,25 +104,33 @@ class OllamaClient(LLMClient):
                     ),
                     WorkflowStep(
                         tool="deploy_backend",
-                        parameters={"project": "agentops", "environment": "production", "component": "backend"},
+                        parameters={"project": matched_project, "environment": "production", "component": "backend"},
                         description="Pull remote repository & execute deployment script",
                         rollback_tool="restart_container",
-                        rollback_parameters={"container_name": "agentops-backend-prev"}
+                        rollback_parameters={"container_name": f"{matched_project}-backend-prev"}
                     ),
                     WorkflowStep(
                         tool="restart_container",
-                        parameters={"container_name": "agentops-backend"},
+                        parameters={"container_name": f"{matched_project}-backend"},
                         description="Gracefully restart container service",
                         rollback_tool="restart_container",
-                        rollback_parameters={"container_name": "agentops-backend"}
+                        rollback_parameters={"container_name": f"{matched_project}-backend"}
                     )
                 ]
             )
 
+        # Extract target server if explicitly mentioned (e.g. "KC-server")
+        s_match = re.search(r'(?:server|node|host|on)\s+([a-zA-Z0-9_\-]+(?:-server|\.internal)?)', msg, re.I)
+        matched_server = None
+        if s_match:
+            candidate = s_match.group(1).strip()
+            if candidate.lower() not in ["uat", "qa", "dev", "prod", "production", "test"]:
+                matched_server = candidate
+
         if "deploy" in msg and "frontend" in msg:
             out.update({
                 "tool": "deploy_frontend",
-                "parameters": {"project": "mom", "component": "frontend", "branch": "main", "environment": "uat"},
+                "parameters": {"project": matched_project, "component": "frontend", "branch": "main", "environment": "uat"},
                 "requires_confirmation": True,
                 "confidence": 0.95
             })
@@ -121,7 +146,7 @@ class OllamaClient(LLMClient):
         elif "deploy" in msg and "backend" in msg:
             out.update({
                 "tool": "deploy_backend",
-                "parameters": {"project": "mom", "component": "backend", "branch": "main", "environment": "uat"},
+                "parameters": {"project": matched_project, "component": "backend", "branch": "main", "environment": "uat"},
                 "requires_confirmation": True,
                 "confidence": 0.95
             })
@@ -134,13 +159,15 @@ class OllamaClient(LLMClient):
                     out["parameters"]["environment"] = "uat" if env == "uat" else ("production" if env in ("production", "prod") else env)
                     break
 
-        elif "docker" in msg and ("status" in msg or "container" in msg or "ps" in msg):
+        elif "docker" in msg and ("status" in msg or "container" in msg or "ps" in msg or "check" in msg):
             out.update({
                 "tool": "docker_status",
                 "parameters": {"environment": "uat"},
                 "requires_confirmation": False,
                 "confidence": 0.9
             })
+            if matched_server:
+                out["parameters"]["server"] = matched_server
             for env in ["uat", "production", "prod", "qa", "staging", "dev"]:
                 if env in msg:
                     out["parameters"]["environment"] = "uat" if env == "uat" else ("production" if env in ("production", "prod") else env)
@@ -153,16 +180,17 @@ class OllamaClient(LLMClient):
                 "requires_confirmation": True,
                 "confidence": 0.85
             })
+            if matched_server:
+                out["parameters"]["server"] = matched_server
             for env in ["uat", "production", "prod", "qa", "staging", "dev"]:
                 if env in msg:
                     out["parameters"]["environment"] = "uat" if env == "uat" else ("production" if env in ("production", "prod") else env)
                     break
 
-        elif "health" in msg or "check" in msg or "audit" in msg:
+        elif "health" in msg or "check" in msg or "audit" in msg or "ping" in msg:
             out.update({
                 "tool": "server_health_check",
                 "parameters": {
-                    "environment": "uat",
                     "checks": ["http", "tcp", "disk", "memory", "cpu"],
                     "url": "http://localhost:8000/api/health",
                     "port": 8000
@@ -170,9 +198,16 @@ class OllamaClient(LLMClient):
                 "requires_confirmation": False,
                 "confidence": 0.9
             })
+            if matched_server:
+                out["parameters"]["server"] = matched_server
+            matched_env = None
             for env in ["uat", "production", "prod", "qa", "staging", "dev"]:
                 if env in msg:
-                    out["parameters"]["environment"] = "uat" if env == "uat" else ("production" if env in ("production", "prod") else env)
+                    matched_env = "uat" if env == "uat" else ("production" if env in ("production", "prod") else env)
                     break
+            if matched_env:
+                out["parameters"]["environment"] = matched_env
+            elif not matched_server:
+                out["parameters"]["environment"] = "uat"
 
         return ToolRequest(**out)
