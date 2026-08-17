@@ -1,21 +1,20 @@
 import React, { useState } from 'react';
 import { Server as ServerIcon, Plus, Trash2, Activity, Key, Lock, Eye, EyeOff, CheckCircle2, AlertCircle, RefreshCw, Edit3, X } from 'lucide-react';
-import { Server, Environment, ServerTestResult } from '../types';
+import { Server, ServerTestResult } from '../types';
 import { testServerConnectionApi, testExistingServerConnectionApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 interface ServerFleetProps {
   servers: Server[];
-  environments: Environment[];
+  environments?: any[];
   onAddServer: (server: Omit<Server, 'id' | 'environment_name'>) => Promise<void>;
   onUpdateServer?: (serverId: number, server: Partial<Server>) => Promise<void>;
   onDeleteServer: (serverId: number) => Promise<void>;
-  onTriggerHealthCheck: (envName: string) => void;
+  onTriggerHealthCheck: (targetName: string) => void;
 }
 
 export const ServerFleet: React.FC<ServerFleetProps> = ({
   servers,
-  environments,
   onAddServer,
   onUpdateServer,
   onDeleteServer,
@@ -36,7 +35,6 @@ export const ServerFleet: React.FC<ServerFleetProps> = ({
   const [password, setPassword] = useState('');
   const [sshKey, setSshKey] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [envId, setEnvId] = useState<number | undefined>(undefined);
 
   // Edit Form State
   const [editName, setEditName] = useState('');
@@ -47,7 +45,6 @@ export const ServerFleet: React.FC<ServerFleetProps> = ({
   const [editPassword, setEditPassword] = useState('');
   const [editSshKey, setEditSshKey] = useState('');
   const [showEditPassword, setShowEditPassword] = useState(false);
-  const [editEnvId, setEditEnvId] = useState<number | undefined>(undefined);
 
   // Form Test Connection State
   const [isTestingModal, setIsTestingModal] = useState(false);
@@ -64,7 +61,6 @@ export const ServerFleet: React.FC<ServerFleetProps> = ({
     setEditPort(s.port);
     setEditUsername(s.username);
     setEditAuthMethod((s.authentication_method as any) || 'password');
-    setEditEnvId(s.environment_id || undefined);
     setEditPassword('');
     setEditSshKey(s.ssh_key || '');
     setModalTestResult(null);
@@ -128,7 +124,6 @@ export const ServerFleet: React.FC<ServerFleetProps> = ({
         hostname,
         port,
         username,
-        environment_id: Number(envId),
         authentication_method: authMethod,
         password: authMethod === 'password' ? password : undefined,
         ssh_key: authMethod === 'custom_key' ? sshKey : undefined,
@@ -153,7 +148,6 @@ export const ServerFleet: React.FC<ServerFleetProps> = ({
         hostname: editHostname,
         port: editPort,
         username: editUsername,
-        environment_id: Number(editEnvId),
         authentication_method: editAuthMethod,
         password: editAuthMethod === 'password' && editPassword ? editPassword : undefined,
         ssh_key: editAuthMethod === 'custom_key' ? editSshKey : undefined,
@@ -187,14 +181,14 @@ export const ServerFleet: React.FC<ServerFleetProps> = ({
           <h4 style={{ fontSize: '13px', color: 'var(--accent-blue)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
             <Plus size={15} /> Configure New Server Node
           </h4>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
             <div>
               <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Server Identifier *</label>
               <input
                 type="text"
                 className="chat-input"
                 style={{ width: '100%', marginTop: 4 }}
-                placeholder="e.g. uat-app-02"
+                placeholder="e.g. general-node-01"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
@@ -235,30 +229,6 @@ export const ServerFleet: React.FC<ServerFleetProps> = ({
                 onChange={(e) => setUsername(e.target.value)}
                 required
               />
-            </div>
-
-            <div>
-              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Environment *</label>
-              <select
-                className="chat-input"
-                style={{ width: '100%', marginTop: 4, background: '#111827', color: '#f8fafc' }}
-                value={envId}
-                onChange={(e) => setEnvId(Number(e.target.value))}
-              >
-                {environments.length > 0 ? (
-                  environments.map((env) => (
-                    <option key={env.id} value={env.id} style={{ background: '#111827', color: '#f8fafc' }}>
-                      {env.name.toUpperCase()}
-                    </option>
-                  ))
-                ) : (
-                  <>
-                    <option value={1} style={{ background: '#111827', color: '#f8fafc' }}>UAT</option>
-                    <option value={2} style={{ background: '#111827', color: '#f8fafc' }}>QA</option>
-                    <option value={3} style={{ background: '#111827', color: '#f8fafc' }}>PRODUCTION</option>
-                  </>
-                )}
-              </select>
             </div>
 
             <div>
@@ -374,7 +344,7 @@ export const ServerFleet: React.FC<ServerFleetProps> = ({
             </button>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
             <div>
               <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Server Identifier *</label>
               <input
@@ -420,22 +390,6 @@ export const ServerFleet: React.FC<ServerFleetProps> = ({
                 onChange={(e) => setEditUsername(e.target.value)}
                 required
               />
-            </div>
-
-            <div>
-              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Environment *</label>
-              <select
-                className="chat-input"
-                style={{ width: '100%', marginTop: 4, background: '#111827', color: '#f8fafc' }}
-                value={editEnvId}
-                onChange={(e) => setEditEnvId(Number(e.target.value))}
-              >
-                {environments.map((env) => (
-                  <option key={env.id} value={env.id} style={{ background: '#111827', color: '#f8fafc' }}>
-                    {env.name.toUpperCase()}
-                  </option>
-                ))}
-              </select>
             </div>
 
             <div>
@@ -551,8 +505,8 @@ export const ServerFleet: React.FC<ServerFleetProps> = ({
               <div key={s.id} className="server-card">
                 <div className="server-card-header">
                   <div className="server-title">{s.name}</div>
-                  <span className="badge badge-success">
-                    {(s.environment_name || 'NODE').toUpperCase()}
+                  <span className="badge badge-primary" style={{ fontSize: '10px' }}>
+                    FLEET NODE
                   </span>
                 </div>
 
@@ -634,7 +588,7 @@ export const ServerFleet: React.FC<ServerFleetProps> = ({
                   <button
                     className="btn btn-secondary btn-sm"
                     style={{ flex: 1 }}
-                    onClick={() => onTriggerHealthCheck(s.environment_name || 'uat')}
+                    onClick={() => onTriggerHealthCheck(s.name)}
                     title="Run real-time health audit"
                   >
                     Health Audit

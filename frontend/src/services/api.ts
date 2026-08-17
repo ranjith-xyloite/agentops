@@ -88,7 +88,13 @@ export async function listUsersApi(): Promise<User[]> {
   return request(`${API_BASE}/users`);
 }
 
-export async function createUserApi(data: { username: string; email: string; password: string; role: string }): Promise<User> {
+export async function createUserApi(data: {
+  username: string;
+  email: string;
+  password: string;
+  role: string;
+  project_ids?: number[];
+}): Promise<User> {
   return request(`${API_BASE}/users`, {
     method: 'POST',
     body: JSON.stringify(data),
@@ -97,7 +103,13 @@ export async function createUserApi(data: { username: string; email: string; pas
 
 export async function updateUserApi(
   userId: number,
-  data: Partial<{ email: string; role: string; is_active: boolean; password?: string }>
+  data: Partial<{
+    email: string;
+    role: string;
+    is_active: boolean;
+    password?: string;
+    project_ids?: number[];
+  }>
 ): Promise<User> {
   return request(`${API_BASE}/users/${userId}`, {
     method: 'PUT',

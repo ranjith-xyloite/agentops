@@ -233,10 +233,12 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
 
             {/* Step 2: Select Environment */}
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                <Activity size={14} style={{ color: 'var(--accent-blue)' }} />
-                2. Target Environment
-              </label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
+                  <Activity size={14} style={{ color: 'var(--accent-blue)' }} />
+                  2. Target Environment
+                </label>
+              </div>
               <select
                 className="chat-input"
                 style={{ width: '100%', padding: '8px 12px', fontSize: '13px', background: '#111827', color: '#f8fafc' }}
@@ -246,11 +248,14 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
                   setPreflightResult(null);
                 }}
               >
-                {environments.map((env) => (
-                  <option key={env.id} value={env.id} style={{ background: '#111827', color: '#f8fafc' }}>
-                    {env.name.toUpperCase()}
-                  </option>
-                ))}
+                {environments.map((env) => {
+                  const flowCount = (activeProject?.deployments || []).filter((d) => d.environment_id === env.id).length;
+                  return (
+                    <option key={env.id} value={env.id} style={{ background: '#111827', color: '#f8fafc' }}>
+                      {env.name.toUpperCase()} {flowCount > 0 ? `(${flowCount} active ${flowCount === 1 ? 'flow' : 'flows'})` : ''}
+                    </option>
+                  );
+                })}
               </select>
             </div>
 
@@ -833,147 +838,222 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
           )}
         </div>
 
-        <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {projects.map((p) => (
-            <div key={p.id} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: 16 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 10 }}>
-                <div>
-                  <h3 style={{ fontSize: '15px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <FolderGit2 size={16} style={{ color: 'var(--accent-cyan)' }} />
-                    {p.name}
-                    {p.deployments && p.deployments.length > 0 && (
+        <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {projects.map((p) => {
+            const allDeployments = p.deployments || [];
+            const envMap: { [envId: number]: ProjectDeployment[] } = {};
+            allDeployments.forEach((d) => {
+              if (!envMap[d.environment_id]) envMap[d.environment_id] = [];
+              envMap[d.environment_id].push(d);
+            });
+
+            const configuredEnvIds = Object.keys(envMap).map(Number);
+
+            return (
+              <div key={p.id} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: 18 }}>
+                {/* Project Header */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10, borderBottom: '1px solid var(--border-subtle)', paddingBottom: 12 }}>
+                  <div>
+                    <h3 style={{ fontSize: '16px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <FolderGit2 size={16} style={{ color: 'var(--accent-cyan)' }} />
+                      {p.name}
                       <span className="badge badge-primary" style={{ fontSize: '10.5px' }}>
-                        {p.deployments.length} {p.deployments.length === 1 ? 'Flow' : 'Flows'}
+                        {allDeployments.length} {allDeployments.length === 1 ? 'Flow' : 'Total Flows'}
                       </span>
-                    )}
-                  </h3>
-                  <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: 2 }}>{p.description || 'Configured Project Service'}</p>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {isAdmin && (
-                    <button
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => {
-                        setModalProjectId(p.id);
-                        setModalEnvId(activeEnvironment?.id || 1);
-                        setModalServerId(servers[0]?.id);
-                        setShowAddFlowModal(true);
-                      }}
-                      title="Add another component flow to this project"
-                    >
-                      <Plus size={13} /> Add Flow
-                    </button>
-                  )}
-
-                  {p.repository_url && (
-                    <a
-                      href={p.repository_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{ color: 'var(--accent-blue)', textDecoration: 'none', fontSize: '12px', display: 'flex', alignItems: 'center', gap: 4 }}
-                    >
-                      <Code size={13} />
-                      {p.repository_url}
-                    </a>
-                  )}
-                </div>
-              </div>
-
-              <div className="table-container">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Component Flow</th>
-                      <th>Target Environment</th>
-                      <th>Assigned Node</th>
-                      <th>Remote Path (Location)</th>
-                      <th>Script</th>
-                      <th>1-Click Action</th>
-                      {isAdmin && <th>Actions</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {p.deployments && p.deployments.length > 0 ? (
-                      p.deployments.map((d) => {
-                        const envObj = environments.find((e) => e.id === d.environment_id);
-                        const srvObj = (d.server_id ? servers.find((s) => s.id === d.server_id) : null)
-                          || servers.find((s) => s.environment_id === d.environment_id);
-
+                      {configuredEnvIds.map((eId) => {
+                        const envObj = environments.find((e) => e.id === eId);
+                        const eName = envObj?.name?.toUpperCase() || `ENV-${eId}`;
+                        const isProd = eName.toLowerCase().includes('prod');
+                        const isUat = eName.toLowerCase().includes('uat');
+                        const isDev = eName.toLowerCase().includes('dev');
+                        const badgeClass = isProd ? 'badge-warning' : isUat ? 'badge-success' : isDev ? 'badge-primary' : 'badge-info';
                         return (
-                          <tr key={d.id}>
-                            <td>
-                              <strong style={{ color: 'var(--accent-cyan)' }}>{d.component}</strong>
-                            </td>
-                            <td>
-                              <span className="badge badge-success">
-                                {envObj?.name?.toUpperCase() || `ENV-${d.environment_id}`}
-                              </span>
-                            </td>
-                            <td>
-                              {srvObj ? (
-                                <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '12px' }}>
-                                  <Server size={12} style={{ color: 'var(--accent-blue)' }} /> {srvObj.name} ({srvObj.hostname})
-                                </span>
-                              ) : (
-                                <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Auto (Fleet Node)</span>
-                              )}
-                            </td>
-                            <td className="font-mono" style={{ fontSize: '12px' }}>{d.repository_path || '/opt/app'}</td>
-                            <td className="font-mono" style={{ color: 'var(--accent-cyan)', fontSize: '12px' }}>{d.deployment_script || './deploy.sh'}</td>
-                            <td>
-                              {isOperator ? (
-                                <button
-                                  className="btn btn-primary btn-sm"
-                                  onClick={() => onTriggerDeploy(p.name, d.component, envObj?.name || 'uat')}
-                                >
-                                  <Play size={12} /> Deploy
-                                </button>
-                              ) : (
-                                <span className="badge badge-pending" style={{ fontSize: '11px' }}>View Only</span>
-                              )}
-                            </td>
-                            {isAdmin && (
-                              <td>
-                                <div style={{ display: 'flex', gap: 6 }}>
-                                  <button
-                                    className="btn btn-secondary btn-sm"
-                                    onClick={() => startEditingFlow(d)}
-                                    title="Edit Configuration"
-                                  >
-                                    <Edit3 size={12} />
-                                  </button>
-                                  {onDeleteDeployment && (
-                                    <button
-                                      className="btn btn-danger btn-sm"
-                                      onClick={() => {
-                                        if (window.confirm(`Delete deployment flow for component "${d.component}"?`)) {
-                                          onDeleteDeployment(d.id);
-                                        }
-                                      }}
-                                      title="Delete Flow"
-                                    >
-                                      <Trash2 size={12} />
-                                    </button>
-                                  )}
-                                </div>
-                              </td>
-                            )}
-                          </tr>
+                          <span key={eId} className={`badge ${badgeClass}`} style={{ fontSize: '10px' }}>
+                            {eName}
+                          </span>
                         );
-                      })
-                    ) : (
-                      <tr>
-                        <td colSpan={isAdmin ? 7 : 6} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
-                          No deployment flows defined for this project.
-                        </td>
-                      </tr>
+                      })}
+                    </h3>
+                    <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: 2 }}>{p.description || 'Configured Project Service'}</p>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {isAdmin && (
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => {
+                          setModalProjectId(p.id);
+                          setModalEnvId(activeEnvironment?.id || 1);
+                          setModalServerId(servers[0]?.id);
+                          setShowAddFlowModal(true);
+                        }}
+                        title="Add another component flow to this project"
+                        style={{ whiteSpace: 'nowrap' }}
+                      >
+                        <Plus size={13} /> Add Flow
+                      </button>
                     )}
-                  </tbody>
-                </table>
+
+                    {p.repository_url && (
+                      <a
+                        href={p.repository_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ color: 'var(--accent-blue)', textDecoration: 'none', fontSize: '12px', display: 'flex', alignItems: 'center', gap: 4, background: 'var(--bg-tertiary)', padding: '4px 8px', borderRadius: 4 }}
+                      >
+                        <Code size={13} />
+                        {p.repository_url}
+                      </a>
+                    )}
+                  </div>
+                </div>
+
+                {/* Grouped Environment Flow Blocks */}
+                {configuredEnvIds.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    {configuredEnvIds.map((eId) => {
+                      const envObj = environments.find((e) => e.id === eId);
+                      const eName = envObj?.name?.toUpperCase() || `ENV-${eId}`;
+                      const envFlows = envMap[eId] || [];
+                      const isProd = eName.toLowerCase().includes('prod');
+                      const isUat = eName.toLowerCase().includes('uat');
+                      const isDev = eName.toLowerCase().includes('dev');
+                      const badgeClass = isProd ? 'badge-warning' : isUat ? 'badge-success' : isDev ? 'badge-primary' : 'badge-info';
+                      const accentColor = isProd ? 'var(--status-warning)' : isUat ? 'var(--status-success)' : isDev ? 'var(--accent-cyan)' : 'var(--accent-purple)';
+
+                      return (
+                        <div
+                          key={eId}
+                          style={{
+                            background: 'var(--bg-primary)',
+                            border: '1px solid var(--border-subtle)',
+                            borderLeft: `3px solid ${accentColor}`,
+                            borderRadius: 'var(--radius-md)',
+                            padding: '12px 14px',
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span className={`badge ${badgeClass}`} style={{ fontSize: '10.5px', fontWeight: 700 }}>
+                                {eName} ENVIRONMENT
+                              </span>
+                              <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                                ({envFlows.length} {envFlows.length === 1 ? 'component' : 'components'})
+                              </span>
+                            </div>
+
+                            {isAdmin && (
+                              <button
+                                className="btn btn-secondary btn-sm"
+                                style={{ fontSize: '11px', padding: '2px 8px', whiteSpace: 'nowrap' }}
+                                onClick={() => {
+                                  setModalProjectId(p.id);
+                                  setModalEnvId(eId);
+                                  setModalServerId(servers[0]?.id);
+                                  const hasFe = envFlows.some(f => f.component.toLowerCase() === 'frontend');
+                                  setModalComponent(hasFe ? 'backend' : 'frontend');
+                                  setShowAddFlowModal(true);
+                                }}
+                              >
+                                <Plus size={11} /> Add to {eName}
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="table-container" style={{ margin: 0, border: 'none', background: 'transparent' }}>
+                            <table className="data-table" style={{ width: '100%' }}>
+                              <thead>
+                                <tr>
+                                  <th style={{ width: '18%', whiteSpace: 'nowrap' }}>Component Flow</th>
+                                  <th style={{ width: '22%', whiteSpace: 'nowrap' }}>Assigned Node</th>
+                                  <th style={{ width: '24%', whiteSpace: 'nowrap' }}>Remote Path (Location)</th>
+                                  <th style={{ width: '18%', whiteSpace: 'nowrap' }}>Script</th>
+                                  <th style={{ width: '10%', whiteSpace: 'nowrap' }}>1-Click Action</th>
+                                  {isAdmin && <th style={{ width: '8%', whiteSpace: 'nowrap' }}>Actions</th>}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {envFlows.map((d) => {
+                                  const srvObj = (d.server_id ? servers.find((s) => s.id === d.server_id) : null)
+                                    || servers.find((s) => s.environment_id === d.environment_id);
+
+                                  return (
+                                    <tr key={d.id}>
+                                      <td>
+                                        <strong style={{ color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center', gap: 6, fontSize: '12px' }}>
+                                          <Layers size={13} />
+                                          {d.component}
+                                        </strong>
+                                      </td>
+                                      <td>
+                                        {srvObj ? (
+                                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '12px', whiteSpace: 'nowrap' }}>
+                                            <Server size={12} style={{ color: 'var(--accent-blue)' }} /> {srvObj.name} ({srvObj.hostname})
+                                          </span>
+                                        ) : (
+                                          <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Auto (Fleet Node)</span>
+                                        )}
+                                      </td>
+                                      <td className="font-mono" style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>{d.repository_path || '/opt/app'}</td>
+                                      <td className="font-mono" style={{ color: 'var(--accent-cyan)', fontSize: '11.5px' }}>{d.deployment_script || './deploy.sh'}</td>
+                                      <td>
+                                        {isOperator ? (
+                                          <button
+                                            className="btn btn-primary btn-sm"
+                                            onClick={() => onTriggerDeploy(p.name, d.component, envObj?.name || 'uat')}
+                                            style={{ whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', fontSize: '11.5px' }}
+                                            title={`Deploy ${d.component} to ${eName}`}
+                                          >
+                                            <Play size={12} /> Deploy
+                                          </button>
+                                        ) : (
+                                          <span className="badge badge-pending" style={{ fontSize: '11px', whiteSpace: 'nowrap' }}>View Only</span>
+                                        )}
+                                      </td>
+                                      {isAdmin && (
+                                        <td>
+                                          <div style={{ display: 'flex', gap: 6 }}>
+                                            <button
+                                              className="btn btn-secondary btn-sm"
+                                              onClick={() => startEditingFlow(d)}
+                                              title="Edit Configuration"
+                                            >
+                                              <Edit3 size={12} />
+                                            </button>
+                                            {onDeleteDeployment && (
+                                              <button
+                                                className="btn btn-danger btn-sm"
+                                                onClick={() => {
+                                                  if (window.confirm(`Delete deployment flow for component "${d.component}" on ${eName}?`)) {
+                                                    onDeleteDeployment(d.id);
+                                                  }
+                                                }}
+                                                title="Delete Flow"
+                                              >
+                                                <Trash2 size={12} />
+                                              </button>
+                                            )}
+                                          </div>
+                                        </td>
+                                      )}
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div style={{ textAlign: 'center', padding: 20, color: 'var(--text-muted)', fontSize: '12px' }}>
+                    No deployment flows defined yet for this project.
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>

@@ -17,12 +17,14 @@ export const UserManagement: React.FC<UserManagementProps> = ({ projects }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<UserRole>('operator');
+  const [createProjectIds, setCreateProjectIds] = useState<number[]>([]);
 
   // Edit User State
   const [editEmail, setEditEmail] = useState('');
   const [editRole, setEditRole] = useState<UserRole>('operator');
   const [editIsActive, setEditIsActive] = useState<boolean>(true);
   const [editPassword, setEditPassword] = useState('');
+  const [editProjectIds, setEditProjectIds] = useState<number[]>([]);
 
   // Inline project assignment state
   const [editingProjectsUserId, setEditingProjectsUserId] = useState<number | null>(null);
@@ -47,16 +49,25 @@ export const UserManagement: React.FC<UserManagementProps> = ({ projects }) => {
     setEditRole(u.role);
     setEditIsActive(u.is_active !== false);
     setEditPassword('');
+    const currentIds = projects.filter((p) => u.assigned_projects?.includes(p.name)).map((p) => p.id);
+    setEditProjectIds(currentIds);
   };
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username || !email || !password) return;
     try {
-      await createUserApi({ username, email, password, role });
+      await createUserApi({
+        username,
+        email,
+        password,
+        role,
+        project_ids: role === 'admin' ? undefined : createProjectIds,
+      });
       setUsername('');
       setEmail('');
       setPassword('');
+      setCreateProjectIds([]);
       setShowAddModal(false);
       await loadUsers();
     } catch (err: any) {
@@ -73,6 +84,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ projects }) => {
         role: editRole,
         is_active: editIsActive,
         password: editPassword ? editPassword : undefined,
+        project_ids: editRole === 'admin' ? undefined : editProjectIds,
       });
       setEditingUser(null);
       await loadUsers();
@@ -121,7 +133,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ projects }) => {
           <span>User Management & RBAC Governance</span>
         </div>
 
-        <button className="btn btn-primary btn-sm" onClick={() => { setShowAddModal(!showAddModal); setEditingUser(null); }}>
+        <button className="btn btn-primary btn-sm" onClick={() => { setShowAddModal(!showAddModal); setEditingUser(null); setCreateProjectIds([]); }}>
           <UserPlus size={14} />
           Create User
         </button>
@@ -129,63 +141,101 @@ export const UserManagement: React.FC<UserManagementProps> = ({ projects }) => {
 
       {/* Add User Modal */}
       {showAddModal && (
-        <form onSubmit={handleCreateUser} style={{ padding: 20, background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-subtle)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-          <div>
-            <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Username</label>
-            <input
-              type="text"
-              className="chat-input"
-              style={{ width: '100%', marginTop: 4 }}
-              placeholder="e.g. devops_lead"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
-            />
-          </div>
+        <form onSubmit={handleCreateUser} style={{ padding: 20, background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-subtle)' }}>
+          <h4 style={{ fontSize: '13px', color: 'var(--accent-blue)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <UserPlus size={15} /> Create New User
+          </h4>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+            <div>
+              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Username *</label>
+              <input
+                type="text"
+                className="chat-input"
+                style={{ width: '100%', marginTop: 4 }}
+                placeholder="e.g. devops_lead"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+              />
+            </div>
 
-          <div>
-            <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Email</label>
-            <input
-              type="email"
-              className="chat-input"
-              style={{ width: '100%', marginTop: 4 }}
-              placeholder="user@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </div>
+            <div>
+              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Email *</label>
+              <input
+                type="email"
+                className="chat-input"
+                style={{ width: '100%', marginTop: 4 }}
+                placeholder="user@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
 
-          <div>
-            <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Password</label>
-            <input
-              type="password"
-              className="chat-input font-mono"
-              style={{ width: '100%', marginTop: 4 }}
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
+            <div>
+              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Password *</label>
+              <input
+                type="password"
+                className="chat-input font-mono"
+                style={{ width: '100%', marginTop: 4 }}
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
 
-          <div>
-            <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Assigned Role</label>
-            <select
-              className="chat-input"
-              style={{ width: '100%', marginTop: 4, background: '#111827', color: '#f8fafc' }}
-              value={role}
-              onChange={(e) => setRole(e.target.value as UserRole)}
-            >
-              <option value="operator" style={{ background: '#111827', color: '#f8fafc' }}>Operator (Deploy & Execute)</option>
-              <option value="viewer" style={{ background: '#111827', color: '#f8fafc' }}>Viewer (Read Only)</option>
-              <option value="admin" style={{ background: '#111827', color: '#f8fafc' }}>Admin (Full Control)</option>
-            </select>
-          </div>
+            <div>
+              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Assigned Role *</label>
+              <select
+                className="chat-input"
+                style={{ width: '100%', marginTop: 4, background: '#111827', color: '#f8fafc' }}
+                value={role}
+                onChange={(e) => setRole(e.target.value as UserRole)}
+              >
+                <option value="operator" style={{ background: '#111827', color: '#f8fafc' }}>Operator (Deploy & Execute)</option>
+                <option value="viewer" style={{ background: '#111827', color: '#f8fafc' }}>Viewer (Read Only)</option>
+                <option value="admin" style={{ background: '#111827', color: '#f8fafc' }}>Admin (Full Control)</option>
+              </select>
+            </div>
 
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
-            <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Save User</button>
-            <button type="button" className="btn btn-secondary" onClick={() => setShowAddModal(false)}>Cancel</button>
+            {role !== 'admin' && (
+              <div style={{ gridColumn: 'span 2' }}>
+                <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
+                  Assigned Projects (Select Multiple Projects for Operator / Viewer Access):
+                </label>
+                {projects.length > 0 ? (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: 10, background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-sm)' }}>
+                    {projects.map((p) => {
+                      const isChecked = createProjectIds.includes(p.id);
+                      return (
+                        <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '12px', cursor: 'pointer', background: isChecked ? 'rgba(59, 130, 246, 0.2)' : 'var(--bg-secondary)', padding: '4px 10px', borderRadius: 4, border: `1px solid ${isChecked ? 'var(--accent-blue)' : 'var(--border-subtle)'}` }}>
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setCreateProjectIds((prev) => [...prev, p.id]);
+                              } else {
+                                setCreateProjectIds((prev) => prev.filter((id) => id !== p.id));
+                              }
+                            }}
+                          />
+                          <strong>{p.name}</strong>
+                        </label>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>No projects available to assign. Create a project in the Projects tab first.</div>
+                )}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, gridColumn: 'span 2' }}>
+              <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Save User</button>
+              <button type="button" className="btn btn-secondary" onClick={() => setShowAddModal(false)}>Cancel</button>
+            </div>
           </div>
         </form>
       )}
@@ -202,7 +252,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ projects }) => {
             </button>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
             <div>
               <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Email *</label>
               <input
@@ -253,6 +303,39 @@ export const UserManagement: React.FC<UserManagementProps> = ({ projects }) => {
                 onChange={(e) => setEditPassword(e.target.value)}
               />
             </div>
+
+            {editRole !== 'admin' && (
+              <div style={{ gridColumn: 'span 2' }}>
+                <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
+                  Assigned Projects (Multi-Select for Operator / Viewer Access):
+                </label>
+                {projects.length > 0 ? (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: 10, background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-sm)' }}>
+                    {projects.map((p) => {
+                      const isChecked = editProjectIds.includes(p.id);
+                      return (
+                        <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '12px', cursor: 'pointer', background: isChecked ? 'rgba(59, 130, 246, 0.2)' : 'var(--bg-secondary)', padding: '4px 10px', borderRadius: 4, border: `1px solid ${isChecked ? 'var(--accent-blue)' : 'var(--border-subtle)'}` }}>
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setEditProjectIds((prev) => [...prev, p.id]);
+                              } else {
+                                setEditProjectIds((prev) => prev.filter((id) => id !== p.id));
+                              }
+                            }}
+                          />
+                          <strong>{p.name}</strong>
+                        </label>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>No projects available to assign.</div>
+                )}
+              </div>
+            )}
 
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, gridColumn: 'span 2' }}>
               <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Update User</button>

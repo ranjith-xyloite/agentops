@@ -52,16 +52,28 @@ async def init_db_and_seed():
 
 
     async with AsyncSessionLocal() as session:
+        # Ensure all standard environments exist (develop, test, uat, qa, prod)
+        standard_envs = [
+            ("develop", "Development Environment"),
+            ("test", "Test Environment"),
+            ("uat", "UAT Environment"),
+            ("qa", "QA Environment"),
+            ("prod", "Production Environment"),
+        ]
+        for env_name, env_desc in standard_envs:
+            res_env = await session.execute(select(Environment).where(Environment.name == env_name))
+            if not res_env.scalars().first():
+                session.add(Environment(name=env_name, description=env_desc))
+        await session.commit()
+
         # Seed Projects if empty
         res = await session.execute(select(Project))
         proj = res.scalars().first()
         if not proj:
-            # Seed environments
-            env_uat = Environment(name="uat", description="UAT Environment")
-            env_qa = Environment(name="qa", description="QA Environment")
-            env_prod = Environment(name="production", description="Production Environment")
-            session.add_all([env_uat, env_qa, env_prod])
-            await session.commit()
+            res_uat = await session.execute(select(Environment).where(Environment.name == "uat"))
+            env_uat = res_uat.scalars().first()
+            res_prod = await session.execute(select(Environment).where(Environment.name == "prod"))
+            env_prod = res_prod.scalars().first()
 
             # Seed servers
             s1 = Server(

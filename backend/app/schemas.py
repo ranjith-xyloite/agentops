@@ -211,6 +211,7 @@ class UserCreate(BaseModel):
     email: str
     password: str = Field(..., min_length=6)
     role: str = "viewer"
+    project_ids: Optional[List[int]] = None
 
 
 class UserUpdate(BaseModel):
@@ -218,6 +219,7 @@ class UserUpdate(BaseModel):
     role: Optional[str] = None
     is_active: Optional[bool] = None
     password: Optional[str] = None
+    project_ids: Optional[List[int]] = None
 
 
 class UserOut(BaseModel):

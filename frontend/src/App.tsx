@@ -257,9 +257,10 @@ export const App: React.FC = () => {
     await handleSendMessage(`Deploy ${projectName} ${component} branch main to ${env}`);
   };
 
-  const handleAddProject = async (projectData: { name: string; description?: string; repository_url?: string }) => {
-    await createProject(projectData);
+  const handleAddProject = async (projectData: { name: string; description?: string; repository_url?: string }): Promise<Project> => {
+    const newProj = await createProject(projectData);
     await refreshAllData();
+    return newProj;
   };
 
   const handleDeleteProject = async (projectId: number) => {

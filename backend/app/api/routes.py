@@ -284,15 +284,21 @@ async def create_user(
     await db.commit()
     await db.refresh(new_user)
 
+    # Assign multiple projects if provided
+    if payload.project_ids:
+        for pid in payload.project_ids:
+            db.add(ProjectMember(user_id=new_user.id, project_id=pid))
+        await db.commit()
+
     await log_audit_event(
         db, current_user, "admin_create_user", "user", str(new_user.id),
-        {"created_username": new_user.username, "role": new_user.role.value},
+        {"created_username": new_user.username, "role": new_user.role.value, "project_ids": payload.project_ids},
         request.client.host if request.client else None
     )
 
     out = UserOut.model_validate(new_user)
     out.role = new_user.role.value
-    out.assigned_projects = []
+    out.assigned_projects = await get_user_accessible_projects(new_user, db)
     return out
 
 
@@ -317,12 +323,17 @@ async def update_user(
     if payload.password:
         user.hashed_password = hash_password(payload.password)
 
+    if payload.project_ids is not None:
+        await db.execute(delete(ProjectMember).where(ProjectMember.user_id == user.id))
+        for pid in payload.project_ids:
+            db.add(ProjectMember(user_id=user.id, project_id=pid))
+
     await db.commit()
     await db.refresh(user)
 
     await log_audit_event(
         db, current_user, "admin_update_user", "user", str(user.id),
-        {"updated_username": user.username, "role": user.role.value},
+        {"updated_username": user.username, "role": user.role.value, "project_ids": payload.project_ids},
         request.client.host if request.client else None
     )
 
@@ -1041,6 +1052,15 @@ async def run_deployment_preflight_check(
     project = await session.get(Project, payload.project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+
+    if current_user.role != UserRole.ADMIN:
+        accessible_projects = await get_user_accessible_projects(current_user, session)
+        if project.name not in accessible_projects:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Access denied: You do not have permissions for project '{project.name}'."
+            )
+
     # 2. Check environment & component flow
     env = await session.get(Environment, payload.environment_id)
     if not env:
