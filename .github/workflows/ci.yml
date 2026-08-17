@@ -2,9 +2,9 @@ name: AgentOps CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main1, develop1 ]
   pull_request:
-    branches: [ main ]
+    branches: [ main1 ]
 
 jobs:
   backend-test:
