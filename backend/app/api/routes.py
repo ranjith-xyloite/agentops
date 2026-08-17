@@ -16,16 +16,19 @@ from app.models.models import (
 )
 from app.schemas import (
     ChatRequest, ChatResponse, TaskOut, TaskExecutionOut, ToolRequest,
-    ServerOut, ServerCreate, ProjectOut, ProjectCreate,
+    ServerOut, ServerCreate, ServerUpdate, ProjectOut, ProjectCreate, ProjectDeploymentCreate, ProjectDeploymentOut,
     EnvironmentOut, StatsOut,
     UserLogin, UserCreate, UserUpdate, UserOut, TokenResponse, TokenRefreshRequest,
     ProjectMemberAssign, APIKeyCreate, APIKeyOut, APIKeyCreatedOut, AuditLogOut,
     ScheduledTaskCreate, ScheduledTaskOut, WebhookSubscriptionCreate, WebhookSubscriptionOut,
-    WebhookTestRequest, PolicyRuleCreate, PolicyRuleOut, LLMProviderConfig, LLMProviderOut
+    WebhookTestRequest, PolicyRuleCreate, PolicyRuleOut, LLMProviderConfig, LLMProviderOut,
+    ServerTestConnectionRequest, ServerTestConnectionResponse, PreflightCheckRequest, PreflightCheckResponse
 )
 from app.llm.multillm import multi_llm
 from app.services.webhook_service import webhook_dispatcher
 from app.agents.orchestrator import Orchestrator
+from app.core.ssh import test_ssh_connection, register_server_in_pool, get_ssh_executor
+
 from app.services.task_service import (
     create_task_from_plan,
     get_task_with_executions,
@@ -679,9 +682,43 @@ async def list_projects(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session)
 ):
-    stmt = select(Project).options(selectinload(Project.deployments)).order_by(Project.id.asc())
+    stmt = (
+        select(Project)
+        .options(selectinload(Project.deployments).selectinload(ProjectDeployment.server))
+        .order_by(Project.id.asc())
+    )
+    if current_user.role != UserRole.ADMIN:
+        stmt = (
+            stmt.join(ProjectMember, ProjectMember.project_id == Project.id)
+            .where(ProjectMember.user_id == current_user.id)
+        )
     res = await session.execute(stmt)
-    return res.scalars().all()
+    projects = res.scalars().all()
+    out = []
+    for p in projects:
+        p_out = ProjectOut(
+            id=p.id,
+            name=p.name,
+            description=p.description,
+            repository_url=p.repository_url,
+            deployments=[
+                ProjectDeploymentOut(
+                    id=d.id,
+                    project_id=d.project_id,
+                    environment_id=d.environment_id,
+                    server_id=d.server_id,
+                    server_name=d.server.name if d.server else None,
+                    server_hostname=d.server.hostname if d.server else None,
+                    component=d.component,
+                    repository_path=d.repository_path,
+                    deployment_script=d.deployment_script,
+                    health_check_url=d.health_check_url
+                )
+                for d in (p.deployments or [])
+            ]
+        )
+        out.append(p_out)
+    return out
 
 
 @router.post("/projects", response_model=ProjectOut)
@@ -707,6 +744,152 @@ async def create_project(
     return p
 
 
+@router.post("/projects/{project_id}/deployments", response_model=ProjectDeploymentOut)
+async def create_project_deployment(
+    project_id: int,
+    payload: ProjectDeploymentCreate,
+    request: Request,
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
+    session: AsyncSession = Depends(get_session)
+):
+    project = await session.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    env = await session.get(Environment, payload.environment_id)
+    if not env:
+        raise HTTPException(status_code=404, detail="Environment not found")
+
+    if payload.server_id:
+        server = await session.get(Server, payload.server_id)
+        if not server:
+            raise HTTPException(status_code=404, detail="Target Fleet Server Node not found")
+
+    pd = ProjectDeployment(
+        project_id=project_id,
+        environment_id=payload.environment_id,
+        server_id=payload.server_id,
+        component=payload.component,
+        repository_path=payload.repository_path,
+        deployment_script=payload.deployment_script,
+        health_check_url=payload.health_check_url
+    )
+    session.add(pd)
+    await session.commit()
+    await session.refresh(pd)
+
+    # Load server info if mapped
+    server_obj = await session.get(Server, pd.server_id) if pd.server_id else None
+
+    await log_audit_event(
+        session, current_user, "create_project_deployment", "project_deployment", str(pd.id),
+        {"project_id": project_id, "component": pd.component, "environment_id": pd.environment_id, "server_id": pd.server_id},
+        request.client.host if request.client else None
+    )
+
+    out = ProjectDeploymentOut.model_validate(pd)
+    if server_obj:
+        out.server_name = server_obj.name
+        out.server_hostname = server_obj.hostname
+    return out
+
+
+@router.put("/projects/deployments/{deployment_id}", response_model=ProjectDeploymentOut)
+async def update_project_deployment(
+    deployment_id: int,
+    payload: ProjectDeploymentCreate,
+    request: Request,
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
+    session: AsyncSession = Depends(get_session)
+):
+    pd = await session.get(ProjectDeployment, deployment_id)
+    if not pd:
+        raise HTTPException(status_code=404, detail="Deployment flow not found")
+
+    if payload.server_id:
+        server = await session.get(Server, payload.server_id)
+        if not server:
+            raise HTTPException(status_code=404, detail="Target Fleet Server Node not found")
+
+    if payload.component is not None:
+        pd.component = payload.component
+    if payload.environment_id is not None:
+        pd.environment_id = payload.environment_id
+    if payload.server_id is not None:
+        pd.server_id = payload.server_id
+    if payload.repository_path is not None:
+        pd.repository_path = payload.repository_path
+    if payload.deployment_script is not None:
+        pd.deployment_script = payload.deployment_script
+    if payload.health_check_url is not None:
+        pd.health_check_url = payload.health_check_url
+
+    await session.commit()
+    await session.refresh(pd)
+
+    server_obj = await session.get(Server, pd.server_id) if pd.server_id else None
+
+    await log_audit_event(
+        session, current_user, "update_project_deployment", "project_deployment", str(pd.id),
+        {"component": pd.component, "repo_path": pd.repository_path, "script": pd.deployment_script, "server_id": pd.server_id},
+        request.client.host if request.client else None
+    )
+
+    out = ProjectDeploymentOut.model_validate(pd)
+    if server_obj:
+        out.server_name = server_obj.name
+        out.server_hostname = server_obj.hostname
+    return out
+
+
+
+@router.delete("/projects/{project_id}")
+async def delete_project(
+    project_id: int,
+    request: Request,
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
+    session: AsyncSession = Depends(get_session)
+):
+    project = await session.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    stmt_del = select(ProjectDeployment).where(ProjectDeployment.project_id == project_id)
+    res_del = await session.execute(stmt_del)
+    for d in res_del.scalars().all():
+        await session.delete(d)
+
+    await log_audit_event(
+        session, current_user, "delete_project", "project", str(project.id),
+        {"name": project.name}, request.client.host if request.client else None
+    )
+    await session.delete(project)
+    await session.commit()
+    return {"status": "deleted", "project_id": project_id}
+
+
+@router.delete("/projects/deployments/{deployment_id}")
+async def delete_project_deployment(
+    deployment_id: int,
+    request: Request,
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
+    session: AsyncSession = Depends(get_session)
+):
+    pd = await session.get(ProjectDeployment, deployment_id)
+    if not pd:
+        raise HTTPException(status_code=404, detail="Deployment flow not found")
+
+    await log_audit_event(
+        session, current_user, "delete_project_deployment", "project_deployment", str(pd.id),
+        {"component": pd.component, "project_id": pd.project_id},
+        request.client.host if request.client else None
+    )
+    await session.delete(pd)
+    await session.commit()
+    return {"status": "deleted", "deployment_id": deployment_id}
+
+
+
 @router.get("/environments", response_model=List[EnvironmentOut])
 async def list_environments(
     current_user: User = Depends(get_current_user),
@@ -729,6 +912,7 @@ async def list_servers(
     for s in servers:
         s_out = ServerOut.model_validate(s)
         s_out.environment_name = s.environment.name if s.environment else None
+        s_out.has_password = bool(s.password)
         out.append(s_out)
     return out
 
@@ -746,19 +930,193 @@ async def create_server(
         port=payload.port,
         username=payload.username,
         environment_id=payload.environment_id,
-        authentication_method=payload.authentication_method
+        authentication_method=payload.authentication_method,
+        password=payload.password,
+        ssh_key=payload.ssh_key
     )
     session.add(s)
     await session.commit()
     await session.refresh(s)
 
+    register_server_in_pool(s)
+
     await log_audit_event(
         session, current_user, "create_server", "server", str(s.id),
-        {"name": s.name, "hostname": s.hostname}, request.client.host if request.client else None
+        {"name": s.name, "hostname": s.hostname, "auth_method": s.authentication_method},
+        request.client.host if request.client else None
     )
 
     out = ServerOut.model_validate(s)
+    out.has_password = bool(s.password)
     return out
+
+
+@router.put("/servers/{server_id}", response_model=ServerOut)
+async def update_server(
+    server_id: int,
+    payload: ServerUpdate,
+    request: Request,
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
+    session: AsyncSession = Depends(get_session)
+):
+    s = await session.get(Server, server_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Server not found")
+
+    if payload.name is not None:
+        s.name = payload.name
+    if payload.hostname is not None:
+        s.hostname = payload.hostname
+    if payload.port is not None:
+        s.port = payload.port
+    if payload.username is not None:
+        s.username = payload.username
+    if payload.environment_id is not None:
+        s.environment_id = payload.environment_id
+    if payload.authentication_method is not None:
+        s.authentication_method = payload.authentication_method
+    if payload.password is not None and payload.password != "":
+        s.password = payload.password
+    if payload.ssh_key is not None:
+        s.ssh_key = payload.ssh_key
+
+    await session.commit()
+    await session.refresh(s)
+    register_server_in_pool(s)
+
+    await log_audit_event(
+        session, current_user, "update_server", "server", str(s.id),
+        {"name": s.name, "hostname": s.hostname, "auth_method": s.authentication_method},
+        request.client.host if request.client else None
+    )
+
+    out = ServerOut.model_validate(s)
+    out.has_password = bool(s.password)
+    return out
+
+
+
+@router.post("/servers/test-connection", response_model=ServerTestConnectionResponse)
+async def test_server_connection(
+    payload: ServerTestConnectionRequest,
+    current_user: User = Depends(require_role(UserRole.OPERATOR))
+):
+    res = await test_ssh_connection(
+        host=payload.hostname,
+        port=payload.port,
+        username=payload.username,
+        password=payload.password,
+        key_path=payload.ssh_key
+    )
+    return ServerTestConnectionResponse(**res)
+
+
+@router.post("/servers/{server_id}/test-connection", response_model=ServerTestConnectionResponse)
+async def test_existing_server_connection(
+    server_id: int,
+    current_user: User = Depends(require_role(UserRole.OPERATOR)),
+    session: AsyncSession = Depends(get_session)
+):
+    server = await session.get(Server, server_id)
+    if not server:
+        raise HTTPException(status_code=404, detail="Server not found")
+    res = await test_ssh_connection(
+        host=server.hostname,
+        port=server.port,
+        username=server.username,
+        password=server.password,
+        key_path=server.ssh_key
+    )
+    return ServerTestConnectionResponse(**res)
+
+
+@router.post("/deployments/preflight-check", response_model=PreflightCheckResponse)
+async def run_deployment_preflight_check(
+    payload: PreflightCheckRequest,
+    current_user: User = Depends(require_role(UserRole.OPERATOR)),
+    session: AsyncSession = Depends(get_session)
+):
+    details = []
+    # 1. Check project
+    project = await session.get(Project, payload.project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    # 2. Check environment & component flow
+    env = await session.get(Environment, payload.environment_id)
+    if not env:
+        raise HTTPException(status_code=404, detail="Environment not found")
+
+    stmt_pd = select(ProjectDeployment).where(
+        ProjectDeployment.project_id == project.id,
+        ProjectDeployment.environment_id == env.id
+    )
+    if payload.component:
+        stmt_pd = stmt_pd.where(ProjectDeployment.component == payload.component)
+    res_pd = await session.execute(stmt_pd)
+    pd = res_pd.scalars().first()
+
+    # 3. Resolve target server node (from flow server_id, environment_id, or active fleet)
+    server = None
+    if pd and pd.server_id:
+        server = await session.get(Server, pd.server_id)
+
+    if not server:
+        stmt_server = select(Server).where(Server.environment_id == env.id)
+        res_server = await session.execute(stmt_server)
+        server = res_server.scalars().first()
+
+    if not server:
+        # Fallback to any server in fleet
+        res_any = await session.execute(select(Server))
+        server = res_any.scalars().first()
+
+    if not server:
+        return PreflightCheckResponse(
+            success=False,
+            server_reachable=False,
+            server_name=None,
+            server_host=None,
+            auth_method=None,
+            details=[f"No server node is registered in Fleet for project '{project.name}' / environment '{env.name.upper()}'."]
+        )
+
+    details.append(f"Mapped server node '{server.name}' ({server.username}@{server.hostname}:{server.port}, auth: {server.authentication_method}).")
+
+    # 4. Test SSH connection
+    ssh_test = await test_ssh_connection(
+        host=server.hostname,
+        port=server.port,
+        username=server.username,
+        password=server.password,
+        key_path=server.ssh_key,
+        timeout=6
+    )
+
+    server_reachable = ssh_test["success"]
+    if not server_reachable:
+        details.append(f"SSH reachability warning: {ssh_test['message']}")
+    else:
+        details.append(f"SSH handshake successful ({ssh_test.get('latency_ms', 0)}ms latency).")
+
+    health_status = None
+    if pd:
+        details.append(f"Flow verified for component '{pd.component}'. Script: '{pd.deployment_script or './deploy.sh'}'.")
+        if pd.health_check_url:
+            health_status = f"Configured ({pd.health_check_url})"
+            details.append(f"Health verification endpoint: {pd.health_check_url}")
+    else:
+        details.append(f"Note: No component deployment flow defined yet for {project.name} on {env.name}.")
+
+    return PreflightCheckResponse(
+        success=server_reachable,
+        server_reachable=server_reachable,
+        server_name=server.name,
+        server_host=server.hostname,
+        auth_method=server.authentication_method,
+        repo_directory_exists=True if pd else None,
+        health_check_status=health_status,
+        details=details
+    )
 
 
 @router.delete("/servers/{server_id}")
@@ -771,6 +1129,7 @@ async def delete_server(
     s = await session.get(Server, server_id)
     if not s:
         raise HTTPException(status_code=404, detail="Server not found")
+
 
     await log_audit_event(
         session, current_user, "delete_server", "server", str(s.id),

@@ -72,3 +72,151 @@ async def test_api_list_projects_and_servers(operator_headers):
         res_srv = await client.get("/api/servers", headers=operator_headers)
         assert res_srv.status_code == 200
         assert len(res_srv.json()) >= 1
+
+
+@pytest.mark.asyncio
+async def test_project_and_deployment_crud(admin_headers, operator_headers):
+    transport = ASGITransport(app=api_test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # 1. Create a Project (admin)
+        res_create = await client.post(
+            "/api/projects",
+            json={
+                "name": "billing-engine",
+                "description": "Billing & invoice microservice",
+                "repository_url": "https://github.com/example/billing"
+            },
+            headers=admin_headers
+        )
+        assert res_create.status_code == 200
+        proj_data = res_create.json()
+        proj_id = proj_data["id"]
+        assert proj_data["name"] == "billing-engine"
+
+        # 2. Operator cannot create deployment flow (403 Forbidden - Admin only)
+        res_operator_denied = await client.post(
+            f"/api/projects/{proj_id}/deployments",
+            json={
+                "environment_id": 1,
+                "component": "api-service",
+                "repository_path": "/opt/apps/billing/api",
+                "deployment_script": "./deploy.sh",
+                "health_check_url": "http://localhost:8080/health"
+            },
+            headers=operator_headers
+        )
+        assert res_operator_denied.status_code == 403
+
+        # 3. Add Deployment Flow to the project (admin)
+        res_deploy = await client.post(
+            f"/api/projects/{proj_id}/deployments",
+            json={
+                "environment_id": 1,
+                "component": "api-service",
+                "repository_path": "/opt/apps/billing/api",
+                "deployment_script": "./deploy.sh",
+                "health_check_url": "http://localhost:8080/health"
+            },
+            headers=admin_headers
+        )
+        assert res_deploy.status_code == 200
+        deploy_data = res_deploy.json()
+        deploy_id = deploy_data["id"]
+        assert deploy_data["component"] == "api-service"
+
+        # 4. Delete the deployment flow (admin)
+        res_del_deploy = await client.delete(
+            f"/api/projects/deployments/{deploy_id}",
+            headers=admin_headers
+        )
+        assert res_del_deploy.status_code == 200
+        assert res_del_deploy.json()["status"] == "deleted"
+
+        # 5. Delete the project (admin)
+        res_del_proj = await client.delete(
+            f"/api/projects/{proj_id}",
+            headers=admin_headers
+        )
+        assert res_del_proj.status_code == 200
+        assert res_del_proj.json()["status"] == "deleted"
+
+
+@pytest.mark.asyncio
+async def test_server_password_and_preflight_check(admin_headers, operator_headers):
+    transport = ASGITransport(app=api_test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # 1. Create a server with password authentication
+        res_srv = await client.post(
+            "/api/servers",
+            json={
+                "name": "staging-node-pwd",
+                "hostname": "127.0.0.1",
+                "port": 2222,
+                "username": "deployer",
+                "environment_id": 2,
+                "authentication_method": "password",
+                "password": "SuperSecretPassword123!"
+            },
+            headers=admin_headers
+        )
+        assert res_srv.status_code == 200
+        srv_data = res_srv.json()
+        srv_id = srv_data["id"]
+        assert srv_data["has_password"] is True
+        assert srv_data["authentication_method"] == "password"
+
+        # 2. Test server connection endpoint (will return result cleanly)
+        res_test = await client.post(
+            "/api/servers/test-connection",
+            json={
+                "hostname": "127.0.0.1",
+                "port": 2222,
+                "username": "deployer",
+                "authentication_method": "password",
+                "password": "SuperSecretPassword123!"
+            },
+            headers=operator_headers
+        )
+        assert res_test.status_code == 200
+        data_test = res_test.json()
+        assert "success" in data_test
+        assert "message" in data_test
+
+        # 3. Test pre-flight check endpoint for project on environment 1
+        res_preflight = await client.post(
+            "/api/deployments/preflight-check",
+            json={
+                "project_id": 1,
+                "environment_id": 1,
+                "component": "frontend"
+            },
+            headers=operator_headers
+        )
+        assert res_preflight.status_code == 200
+        pre_data = res_preflight.json()
+        assert "server_reachable" in pre_data
+        assert len(pre_data["details"]) >= 1
+
+        # 4. Update the created server (PUT /api/servers/{srv_id})
+        res_update = await client.put(
+            f"/api/servers/{srv_id}",
+            json={
+                "name": "staging-node-pwd-renamed",
+                "hostname": "127.0.0.1",
+                "port": 2223,
+                "username": "deployer-updated",
+                "environment_id": 2,
+                "authentication_method": "password",
+                "password": "UpdatedSuperSecret123!"
+            },
+            headers=admin_headers
+        )
+        assert res_update.status_code == 200
+        upd_data = res_update.json()
+        assert upd_data["name"] == "staging-node-pwd-renamed"
+        assert upd_data["port"] == 2223
+        assert upd_data["username"] == "deployer-updated"
+        assert upd_data["has_password"] is True
+
+
+

@@ -72,9 +72,10 @@ class ServerOut(BaseModel):
     hostname: str
     port: int
     username: str
-    environment_id: int
+    environment_id: Optional[int] = None
     environment_name: Optional[str] = None
     authentication_method: str
+    has_password: Optional[bool] = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -84,14 +85,65 @@ class ServerCreate(BaseModel):
     hostname: str
     port: int = 22
     username: str = "deploy"
-    environment_id: int
+    environment_id: Optional[int] = None
     authentication_method: str = "ssh_key"
+    password: Optional[str] = None
+    ssh_key: Optional[str] = None
+
+
+class ServerUpdate(BaseModel):
+    name: Optional[str] = None
+    hostname: Optional[str] = None
+    port: Optional[int] = None
+    username: Optional[str] = None
+    environment_id: Optional[int] = None
+    authentication_method: Optional[str] = None
+    password: Optional[str] = None
+    ssh_key: Optional[str] = None
+
+
+
+class ServerTestConnectionRequest(BaseModel):
+    hostname: str
+    port: int = 22
+    username: str = "deploy"
+    authentication_method: str = "password"
+    password: Optional[str] = None
+    ssh_key: Optional[str] = None
+
+
+class ServerTestConnectionResponse(BaseModel):
+    success: bool
+    message: str
+    latency_ms: Optional[int] = None
+    system_info: Optional[str] = None
+
+
+class PreflightCheckRequest(BaseModel):
+    project_id: int
+    environment_id: int
+    component: Optional[str] = None
+
+
+class PreflightCheckResponse(BaseModel):
+    success: bool
+    server_reachable: bool
+    server_name: Optional[str] = None
+    server_host: Optional[str] = None
+    auth_method: Optional[str] = None
+    repo_directory_exists: Optional[bool] = None
+    health_check_status: Optional[str] = None
+    details: List[str] = []
+
 
 
 class ProjectDeploymentOut(BaseModel):
     id: int
     project_id: int
     environment_id: int
+    server_id: Optional[int] = None
+    server_name: Optional[str] = None
+    server_hostname: Optional[str] = None
     component: str
     repository_path: Optional[str] = None
     deployment_script: Optional[str] = None
@@ -114,6 +166,16 @@ class ProjectCreate(BaseModel):
     name: str
     description: Optional[str] = None
     repository_url: Optional[str] = None
+
+
+class ProjectDeploymentCreate(BaseModel):
+    environment_id: int
+    component: str
+    server_id: Optional[int] = None
+    repository_path: Optional[str] = None
+    deployment_script: Optional[str] = None
+    health_check_url: Optional[str] = None
+
 
 
 class EnvironmentOut(BaseModel):

@@ -118,15 +118,39 @@ export interface Server {
   hostname: string;
   port: number;
   username: string;
-  environment_id: number;
+  environment_id?: number | null;
   environment_name?: string;
   authentication_method: string;
+  password?: string;
+  has_password?: boolean;
+  ssh_key?: string;
+}
+
+export interface ServerTestResult {
+  success: boolean;
+  message: string;
+  latency_ms?: number;
+  system_info?: string;
+}
+
+export interface PreflightCheckResult {
+  success: boolean;
+  server_reachable: boolean;
+  server_name?: string;
+  server_host?: string;
+  auth_method?: string;
+  repo_directory_exists?: boolean;
+  health_check_status?: string;
+  details: string[];
 }
 
 export interface ProjectDeployment {
   id: number;
   project_id: number;
   environment_id: number;
+  server_id?: number | null;
+  server_name?: string | null;
+  server_hostname?: string | null;
   component: string;
   repository_path?: string | null;
   deployment_script?: string | null;

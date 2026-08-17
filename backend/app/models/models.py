@@ -99,8 +99,10 @@ class Server(Base):
     hostname = Column(String(200), nullable=False)
     port = Column(Integer, default=22)
     username = Column(String(100), nullable=False)
-    environment_id = Column(Integer, ForeignKey("environments.id"))
+    environment_id = Column(Integer, ForeignKey("environments.id", ondelete="SET NULL"), nullable=True)
     authentication_method = Column(String(50), default="ssh_key")
+    password = Column(String(255), nullable=True)
+    ssh_key = Column(Text, nullable=True)
     environment = relationship("Environment", back_populates="servers", lazy="selectin")
 
 
@@ -109,11 +111,13 @@ class ProjectDeployment(Base):
     id = Column(Integer, primary_key=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
     environment_id = Column(Integer, ForeignKey("environments.id"), nullable=False)
+    server_id = Column(Integer, ForeignKey("servers.id", ondelete="SET NULL"), nullable=True)
     component = Column(String(50), nullable=False)
     repository_path = Column(String(500))
     deployment_script = Column(Text)
     health_check_url = Column(String(500))
     project = relationship("Project", back_populates="deployments", lazy="selectin")
+    server = relationship("Server", lazy="selectin")
 
 
 class Task(Base):

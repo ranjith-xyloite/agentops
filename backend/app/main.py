@@ -4,7 +4,7 @@ import time
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.api.routes import router as api_router
 from app.config import settings
@@ -39,11 +39,17 @@ async def init_db_and_seed():
             "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS current_step_index INTEGER",
             "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS is_rollback BOOLEAN DEFAULT FALSE",
             "ALTER TABLE task_executions ADD COLUMN IF NOT EXISTS is_rollback BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE servers ADD COLUMN IF NOT EXISTS password VARCHAR(255)",
+            "ALTER TABLE servers ADD COLUMN IF NOT EXISTS ssh_key TEXT",
+            "ALTER TABLE project_deployments ADD COLUMN IF NOT EXISTS server_id INTEGER REFERENCES servers(id) ON DELETE SET NULL",
+            "ALTER TABLE servers ALTER COLUMN environment_id DROP NOT NULL",
         ]:
             try:
                 await conn.execute(text(col_stmt))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Schema migration statement '{col_stmt}' skipped or failed: {e}")
+
+
 
     async with AsyncSessionLocal() as session:
         # Seed Projects if empty
@@ -147,16 +153,19 @@ async def init_db_and_seed():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.services.scheduler import scheduler
+    from app.core.ssh import initialize_ssh_pool_from_db
     try:
         await init_db_and_seed()
+        await initialize_ssh_pool_from_db()
     except Exception as e:
-        logger.warning(f"Database initialization note: {e}")
+        logger.warning(f"Database/SSH initialization note: {e}")
 
     # Start background Cron scheduler
     scheduler.start()
     yield
     # Stop scheduler gracefully on shutdown
     scheduler.stop()
+
 
 
 app = FastAPI(

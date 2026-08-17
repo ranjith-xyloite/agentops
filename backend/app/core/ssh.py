@@ -309,26 +309,87 @@ def get_ssh_executor() -> SSHExecutor:
     return SSHExecutor(get_ssh_pool())
 
 
+def register_server_in_pool(server: Any):
+    """Register or update a Server instance in the global SSH connection pool."""
+    pool = get_ssh_pool()
+    config = SSHConnectionConfig(
+        host=server.hostname,
+        port=server.port,
+        username=server.username,
+        password=getattr(server, "password", None),
+        key_path=getattr(server, "ssh_key", None),
+    )
+    pool.register_host(f"server:{server.id}", config)
+    pool.register_host(f"{server.id}:{server.name}", config)
+    if getattr(server, "environment_id", None):
+        pool.register_host(f"{server.environment_id}:{server.name}", config)
+
+
+async def test_ssh_connection(
+    host: str,
+    port: int = 22,
+    username: str = "deploy",
+    password: Optional[str] = None,
+    key_path: Optional[str] = None,
+    timeout: int = 10
+) -> Dict[str, Any]:
+    """Directly test SSH connectivity to a remote host with supplied credentials."""
+    import time
+    start = time.time()
+    connect_kwargs = {
+        "host": host,
+        "port": port,
+        "username": username,
+        "known_hosts": None,
+    }
+    if password:
+        connect_kwargs["password"] = password
+    if key_path:
+        connect_kwargs["client_keys"] = [key_path]
+
+    try:
+        conn = await asyncio.wait_for(
+            asyncssh.connect(**connect_kwargs),
+            timeout=timeout
+        )
+        latency = int((time.time() - start) * 1000)
+        res = await asyncio.wait_for(conn.run("uname -a 2>/dev/null || hostname", check=False), timeout=5)
+        sys_info = res.stdout.strip() if res.stdout else "Connected successfully"
+        conn.close()
+        await conn.wait_closed()
+        return {
+            "success": True,
+            "message": f"Successfully authenticated to {username}@{host}:{port}",
+            "latency_ms": latency,
+            "system_info": sys_info
+        }
+    except asyncio.TimeoutError:
+        return {
+            "success": False,
+            "message": f"Connection timed out after {timeout}s",
+            "latency_ms": int((time.time() - start) * 1000),
+            "system_info": None
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"SSH connection failed: {str(e)}",
+            "latency_ms": int((time.time() - start) * 1000),
+            "system_info": None
+        }
+
+
 async def initialize_ssh_pool_from_db():
     """Initialize SSH pool from database server configurations."""
     from app.database.session import AsyncSessionLocal
     from app.models.models import Server
     from sqlalchemy import select
     
-    pool = get_ssh_pool()
-    
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(Server))
         servers = result.scalars().all()
         
         for server in servers:
-            host_key = f"{server.environment_id}:{server.name}"
-            config = SSHConnectionConfig(
-                host=server.hostname,
-                port=server.port,
-                username=server.username,
-                key_path=None,
-            )
-            pool.register_host(host_key, config)
+            register_server_in_pool(server)
     
     logger.info(f"Initialized SSH pool with {len(servers)} servers")

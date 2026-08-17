@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Users, UserPlus, Trash2, Check, X } from 'lucide-react';
+import { Users, UserPlus, Trash2, Check, X, Edit3 } from 'lucide-react';
 import { User, Project, UserRole } from '../types';
-import { listUsersApi, createUserApi, deleteUserApi, assignUserProjectsApi } from '../services/api';
+import { listUsersApi, createUserApi, updateUserApi, deleteUserApi, assignUserProjectsApi } from '../services/api';
 
 interface UserManagementProps {
   projects: Project[];
@@ -10,11 +10,22 @@ interface UserManagementProps {
 export const UserManagement: React.FC<UserManagementProps> = ({ projects }) => {
   const [users, setUsers] = useState<User[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+
+  // Add User State
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<UserRole>('operator');
-  const [editingUserId, setEditingUserId] = useState<number | null>(null);
+
+  // Edit User State
+  const [editEmail, setEditEmail] = useState('');
+  const [editRole, setEditRole] = useState<UserRole>('operator');
+  const [editIsActive, setEditIsActive] = useState<boolean>(true);
+  const [editPassword, setEditPassword] = useState('');
+
+  // Inline project assignment state
+  const [editingProjectsUserId, setEditingProjectsUserId] = useState<number | null>(null);
   const [selectedProjectIds, setSelectedProjectIds] = useState<number[]>([]);
 
   const loadUsers = async () => {
@@ -30,6 +41,14 @@ export const UserManagement: React.FC<UserManagementProps> = ({ projects }) => {
     loadUsers();
   }, []);
 
+  const startEditingUser = (u: User) => {
+    setEditingUser(u);
+    setEditEmail(u.email);
+    setEditRole(u.role);
+    setEditIsActive(u.is_active !== false);
+    setEditPassword('');
+  };
+
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username || !email || !password) return;
@@ -39,6 +58,23 @@ export const UserManagement: React.FC<UserManagementProps> = ({ projects }) => {
       setEmail('');
       setPassword('');
       setShowAddModal(false);
+      await loadUsers();
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
+    }
+  };
+
+  const handleUpdateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    try {
+      await updateUserApi(editingUser.id, {
+        email: editEmail,
+        role: editRole,
+        is_active: editIsActive,
+        password: editPassword ? editPassword : undefined,
+      });
+      setEditingUser(null);
       await loadUsers();
     } catch (err: any) {
       alert(`Error: ${err.message}`);
@@ -59,7 +95,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ projects }) => {
   const handleSaveProjects = async (userId: number) => {
     try {
       await assignUserProjectsApi(userId, selectedProjectIds);
-      setEditingUserId(null);
+      setEditingProjectsUserId(null);
       await loadUsers();
     } catch (err: any) {
       alert(`Error: ${err.message}`);
@@ -85,12 +121,13 @@ export const UserManagement: React.FC<UserManagementProps> = ({ projects }) => {
           <span>User Management & RBAC Governance</span>
         </div>
 
-        <button className="btn btn-primary btn-sm" onClick={() => setShowAddModal(!showAddModal)}>
+        <button className="btn btn-primary btn-sm" onClick={() => { setShowAddModal(!showAddModal); setEditingUser(null); }}>
           <UserPlus size={14} />
           Create User
         </button>
       </div>
 
+      {/* Add User Modal */}
       {showAddModal && (
         <form onSubmit={handleCreateUser} style={{ padding: 20, background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-subtle)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
           <div>
@@ -123,7 +160,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ projects }) => {
             <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Password</label>
             <input
               type="password"
-              className="chat-input"
+              className="chat-input font-mono"
               style={{ width: '100%', marginTop: 4 }}
               placeholder="••••••••"
               value={password}
@@ -136,19 +173,91 @@ export const UserManagement: React.FC<UserManagementProps> = ({ projects }) => {
             <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Assigned Role</label>
             <select
               className="chat-input"
-              style={{ width: '100%', marginTop: 4 }}
+              style={{ width: '100%', marginTop: 4, background: '#111827', color: '#f8fafc' }}
               value={role}
               onChange={(e) => setRole(e.target.value as UserRole)}
             >
-              <option value="operator">Operator (Deploy & Execute)</option>
-              <option value="viewer">Viewer (Read Only)</option>
-              <option value="admin">Admin (Full Control)</option>
+              <option value="operator" style={{ background: '#111827', color: '#f8fafc' }}>Operator (Deploy & Execute)</option>
+              <option value="viewer" style={{ background: '#111827', color: '#f8fafc' }}>Viewer (Read Only)</option>
+              <option value="admin" style={{ background: '#111827', color: '#f8fafc' }}>Admin (Full Control)</option>
             </select>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
             <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Save User</button>
             <button type="button" className="btn btn-secondary" onClick={() => setShowAddModal(false)}>Cancel</button>
+          </div>
+        </form>
+      )}
+
+      {/* Edit User Modal */}
+      {editingUser && (
+        <form onSubmit={handleUpdateUser} style={{ padding: 20, background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-subtle)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+            <h4 style={{ fontSize: '13px', color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Edit3 size={15} /> Edit User: {editingUser.username} (#{editingUser.id})
+            </h4>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditingUser(null)}>
+              <X size={13} />
+            </button>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12 }}>
+            <div>
+              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Email *</label>
+              <input
+                type="email"
+                className="chat-input"
+                style={{ width: '100%', marginTop: 4 }}
+                value={editEmail}
+                onChange={(e) => setEditEmail(e.target.value)}
+                required
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Role *</label>
+              <select
+                className="chat-input"
+                style={{ width: '100%', marginTop: 4, background: '#111827', color: '#f8fafc' }}
+                value={editRole}
+                onChange={(e) => setEditRole(e.target.value as UserRole)}
+              >
+                <option value="operator" style={{ background: '#111827', color: '#f8fafc' }}>Operator (Deploy & Execute)</option>
+                <option value="viewer" style={{ background: '#111827', color: '#f8fafc' }}>Viewer (Read Only)</option>
+                <option value="admin" style={{ background: '#111827', color: '#f8fafc' }}>Admin (Full Control)</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Status *</label>
+              <select
+                className="chat-input"
+                style={{ width: '100%', marginTop: 4, background: '#111827', color: '#f8fafc' }}
+                value={editIsActive ? 'active' : 'disabled'}
+                onChange={(e) => setEditIsActive(e.target.value === 'active')}
+              >
+                <option value="active" style={{ background: '#111827', color: '#f8fafc' }}>Active</option>
+                <option value="disabled" style={{ background: '#111827', color: '#f8fafc' }}>Disabled / Suspended</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Reset Password (Optional)</label>
+              <input
+                type="password"
+                className="chat-input font-mono"
+                style={{ width: '100%', marginTop: 4 }}
+                placeholder="Enter new password to reset"
+                value={editPassword}
+                onChange={(e) => setEditPassword(e.target.value)}
+              />
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, gridColumn: 'span 2' }}>
+              <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Update User</button>
+              <button type="button" className="btn btn-secondary" onClick={() => setEditingUser(null)}>Cancel</button>
+            </div>
           </div>
         </form>
       )}
@@ -160,6 +269,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ projects }) => {
               <th>ID</th>
               <th>Username & Email</th>
               <th>Role</th>
+              <th>Status</th>
               <th>Assigned Projects (Multi-Tenancy)</th>
               <th>Created</th>
               <th>Actions</th>
@@ -177,11 +287,18 @@ export const UserManagement: React.FC<UserManagementProps> = ({ projects }) => {
                 </td>
                 <td>{getRoleBadge(u.role)}</td>
                 <td>
+                  {u.is_active !== false ? (
+                    <span className="badge badge-success">ACTIVE</span>
+                  ) : (
+                    <span className="badge badge-danger">DISABLED</span>
+                  )}
+                </td>
+                <td>
                   {u.role === 'admin' ? (
                     <span style={{ fontSize: '12px', color: 'var(--status-warning)' }}>
                       All Projects (Global Admin)
                     </span>
-                  ) : editingUserId === u.id ? (
+                  ) : editingProjectsUserId === u.id ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                         {projects.map((p) => {
@@ -208,7 +325,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ projects }) => {
                         <button className="btn btn-primary btn-sm" onClick={() => handleSaveProjects(u.id)}>
                           <Check size={12} /> Save
                         </button>
-                        <button className="btn btn-secondary btn-sm" onClick={() => setEditingUserId(null)}>
+                        <button className="btn btn-secondary btn-sm" onClick={() => setEditingProjectsUserId(null)}>
                           <X size={12} /> Cancel
                         </button>
                       </div>
@@ -224,12 +341,12 @@ export const UserManagement: React.FC<UserManagementProps> = ({ projects }) => {
                         className="btn btn-secondary btn-sm"
                         style={{ padding: '2px 6px', fontSize: '10px' }}
                         onClick={() => {
-                          setEditingUserId(u.id);
+                          setEditingProjectsUserId(u.id);
                           const currentIds = projects.filter((p) => u.assigned_projects?.includes(p.name)).map((p) => p.id);
                           setSelectedProjectIds(currentIds);
                         }}
                       >
-                        Edit
+                        Projects
                       </button>
                     </div>
                   )}
@@ -238,13 +355,23 @@ export const UserManagement: React.FC<UserManagementProps> = ({ projects }) => {
                   {u.created_at ? new Date(u.created_at).toLocaleDateString() : 'Active'}
                 </td>
                 <td>
-                  <button
-                    className="btn btn-danger btn-sm"
-                    onClick={() => handleDeleteUser(u.id)}
-                    title="Delete User"
-                  >
-                    <Trash2 size={13} />
-                  </button>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => startEditingUser(u)}
+                      title="Edit User Profile"
+                    >
+                      <Edit3 size={12} />
+                      Edit
+                    </button>
+                    <button
+                      className="btn btn-danger btn-sm"
+                      onClick={() => handleDeleteUser(u.id)}
+                      title="Delete User"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -254,3 +381,4 @@ export const UserManagement: React.FC<UserManagementProps> = ({ projects }) => {
     </div>
   );
 };
+

@@ -3,7 +3,7 @@ import { Send, Bot, User, Play, XCircle, Sparkles, CheckCircle2, ShieldAlert } f
 import { ChatPlanResponse } from '../types';
 import { useAuth } from '../context/AuthContext';
 
-interface Message {
+export interface ChatMessage {
   id: string;
   sender: 'user' | 'agent';
   text: string;
@@ -12,6 +12,7 @@ interface Message {
 }
 
 interface ChatConsoleProps {
+  messages: ChatMessage[];
   onSendMessage: (msg: string) => Promise<ChatPlanResponse>;
   onConfirmTask: (taskId: number) => Promise<void>;
   onCancelTask: (taskId: number) => Promise<void>;
@@ -28,6 +29,7 @@ const QUICK_PROMPTS = [
 ];
 
 export const ChatConsole: React.FC<ChatConsoleProps> = ({
+  messages,
   onSendMessage,
   onConfirmTask,
   onCancelTask,
@@ -38,14 +40,6 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
   const isViewer = role === 'viewer';
 
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 'welcome',
-      sender: 'agent',
-      text: 'Hello! I am your AgentOps DevOps Assistant. Tell me what you would like to deploy, monitor, or inspect across your infrastructure.',
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    },
-  ]);
 
   const handleSend = async (textToSend?: string) => {
     if (isViewer) {
@@ -55,37 +49,13 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
     const text = (textToSend || input).trim();
     if (!text || isProcessing) return;
 
-    const userMsg: Message = {
-      id: `user-${Date.now()}`,
-      sender: 'user',
-      text,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
-
-    setMessages((prev) => [...prev, userMsg]);
     if (!textToSend) setInput('');
 
     try {
       const plan = await onSendMessage(text);
-      const agentMsg: Message = {
-        id: `agent-${Date.now()}`,
-        sender: 'agent',
-        text: plan.execution_plan.tool
-          ? `I have formulated an execution plan for task #${plan.task_id}:`
-          : (plan.execution_plan.question || 'I could not determine an appropriate tool for this request.'),
-        plan,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-      setMessages((prev) => [...prev, agentMsg]);
       onSelectTaskToStream(plan.task_id);
     } catch (err: any) {
-      const errorMsg: Message = {
-        id: `agent-${Date.now()}`,
-        sender: 'agent',
-        text: `Error processing request: ${err.message || 'Unknown error'}`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-      setMessages((prev) => [...prev, errorMsg]);
+      console.error('Chat error:', err);
     }
   };
 

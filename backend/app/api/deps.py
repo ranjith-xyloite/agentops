@@ -34,11 +34,16 @@ async def get_current_user(
     db: AsyncSession = Depends(get_session)
 ) -> User:
     """
-    Authenticate user via Bearer JWT token or X-API-Key header.
+    Authenticate user via Bearer JWT token (header or ?token= query param) or X-API-Key header.
     """
-    # 1. Try Bearer JWT Token
+    # 1. Try Bearer JWT Token from header or query param (for EventSource SSE)
+    token = None
     if auth_creds and auth_creds.credentials:
         token = auth_creds.credentials
+    elif "token" in request.query_params:
+        token = request.query_params["token"]
+
+    if token:
         try:
             payload = decode_token(token)
             if payload.get("type") != "access":

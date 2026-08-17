@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Navbar, NavTab } from './components/Navbar';
 import { DashboardStats } from './components/DashboardStats';
-import { ChatConsole } from './components/ChatConsole';
+import { ChatConsole, ChatMessage } from './components/ChatConsole';
 import { TaskTerminal } from './components/TaskTerminal';
 import { TaskList } from './components/TaskList';
 import { ServerFleet } from './components/ServerFleet';
 import { ProjectDeployments } from './components/ProjectDeployments';
+import { WorkflowDeployer } from './components/WorkflowDeployer';
 import { SchedulerManager } from './components/SchedulerManager';
 import { PoliciesAndWebhooks } from './components/PoliciesAndWebhooks';
 import { UserManagement } from './components/UserManagement';
@@ -33,8 +34,14 @@ import {
   listTasks,
   listServers,
   createServer,
+  updateServerApi,
   deleteServer,
   listProjects,
+  createProject,
+  deleteProject,
+  createProjectDeployment,
+  updateProjectDeployment,
+  deleteProjectDeployment,
   listEnvironments,
   getStats,
   subscribeToTaskEvents,
@@ -50,6 +57,16 @@ export const App: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [stats, setStats] = useState<SystemStats | null>(null);
+
+  // Chat conversation state
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
+    {
+      id: 'welcome',
+      sender: 'agent',
+      text: 'Hello! I am your AgentOps DevOps Assistant. Tell me what you would like to deploy, monitor, or inspect across your infrastructure.',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    },
+  ]);
 
   // Active terminal stream state
   const [activeTaskId, setActiveTaskId] = useState<number | null>(null);
@@ -148,13 +165,43 @@ export const App: React.FC = () => {
 
   const handleSendMessage = async (msg: string): Promise<ChatPlanResponse> => {
     setIsProcessing(true);
+    const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const userMsg: ChatMessage = {
+      id: `user-${Date.now()}`,
+      sender: 'user',
+      text: msg,
+      timestamp: nowStr,
+    };
+    setChatMessages((prev) => [...prev, userMsg]);
+
     try {
       const plan = await sendMessage(msg);
       setActiveTaskId(plan.task_id);
       setCurrentTaskStatus(plan.status);
       setTerminalLogs([`[System] Initialized plan for task #${plan.task_id} (${plan.status})`]);
+
+      const agentMsg: ChatMessage = {
+        id: `agent-${Date.now()}`,
+        sender: 'agent',
+        text: plan.execution_plan.tool
+          ? `I have formulated an execution plan for task #${plan.task_id}:`
+          : (plan.execution_plan.question || 'I could not determine an appropriate tool for this request.'),
+        plan,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      setChatMessages((prev) => [...prev, agentMsg]);
+
       await refreshAllData();
       return plan;
+    } catch (err: any) {
+      const errorMsg: ChatMessage = {
+        id: `agent-${Date.now()}`,
+        sender: 'agent',
+        text: `Error processing request: ${err.message || 'Unknown error'}`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      setChatMessages((prev) => [...prev, errorMsg]);
+      throw err;
     } finally {
       setIsProcessing(false);
     }
@@ -188,6 +235,11 @@ export const App: React.FC = () => {
     await refreshAllData();
   };
 
+  const handleUpdateServer = async (serverId: number, serverData: Partial<Server>) => {
+    await updateServerApi(serverId, serverData);
+    await refreshAllData();
+  };
+
   const handleDeleteServer = async (serverId: number) => {
     if (window.confirm('Are you sure you want to remove this server node?')) {
       await deleteServer(serverId);
@@ -203,6 +255,37 @@ export const App: React.FC = () => {
   const handleTriggerDeploy = async (projectName: string, component: string, env: string) => {
     setActiveTab('console');
     await handleSendMessage(`Deploy ${projectName} ${component} branch main to ${env}`);
+  };
+
+  const handleAddProject = async (projectData: { name: string; description?: string; repository_url?: string }) => {
+    await createProject(projectData);
+    await refreshAllData();
+  };
+
+  const handleDeleteProject = async (projectId: number) => {
+    await deleteProject(projectId);
+    await refreshAllData();
+  };
+
+  const handleAddDeployment = async (
+    projectId: number,
+    data: { environment_id: number; component: string; repository_path?: string; deployment_script?: string; health_check_url?: string }
+  ) => {
+    await createProjectDeployment(projectId, data);
+    await refreshAllData();
+  };
+
+  const handleUpdateDeployment = async (
+    deploymentId: number,
+    data: { environment_id?: number; component?: string; repository_path?: string; deployment_script?: string; health_check_url?: string }
+  ) => {
+    await updateProjectDeployment(deploymentId, data);
+    await refreshAllData();
+  };
+
+  const handleDeleteDeployment = async (deploymentId: number) => {
+    await deleteProjectDeployment(deploymentId);
+    await refreshAllData();
   };
 
   const runningTasksCount = tasks.filter((t) => t.status === 'RUNNING').length;
@@ -223,6 +306,7 @@ export const App: React.FC = () => {
         {activeTab === 'console' && (
           <div className="console-workspace">
             <ChatConsole
+              messages={chatMessages}
               onSendMessage={handleSendMessage}
               onConfirmTask={handleConfirmTask}
               onCancelTask={handleCancelTask}
@@ -235,6 +319,7 @@ export const App: React.FC = () => {
               activeTask={activeTask}
               logs={terminalLogs}
               currentStatus={currentTaskStatus}
+              onConfirmTask={handleConfirmTask}
               onCancelTask={handleCancelTask}
               onClearLogs={() => setTerminalLogs([])}
             />
@@ -253,11 +338,24 @@ export const App: React.FC = () => {
           />
         )}
 
+        {activeTab === 'workflows' && (
+          <WorkflowDeployer
+            projects={projects}
+            environments={environments}
+            servers={servers}
+            onTriggerDeploy={handleTriggerDeploy}
+            onAddDeployment={handleAddDeployment}
+            onUpdateDeployment={handleUpdateDeployment}
+            onDeleteDeployment={handleDeleteDeployment}
+          />
+        )}
+
         {activeTab === 'infrastructure' && (
           <ServerFleet
             servers={servers}
             environments={environments}
             onAddServer={handleAddServer}
+            onUpdateServer={handleUpdateServer}
             onDeleteServer={handleDeleteServer}
             onTriggerHealthCheck={handleTriggerHealthCheck}
           />
@@ -266,7 +364,14 @@ export const App: React.FC = () => {
         {activeTab === 'projects' && (
           <ProjectDeployments
             projects={projects}
+            environments={environments}
+            servers={servers}
             onTriggerDeploy={handleTriggerDeploy}
+            onAddProject={handleAddProject}
+            onDeleteProject={handleDeleteProject}
+            onAddDeployment={handleAddDeployment}
+            onUpdateDeployment={handleUpdateDeployment}
+            onDeleteDeployment={handleDeleteDeployment}
           />
         )}
 

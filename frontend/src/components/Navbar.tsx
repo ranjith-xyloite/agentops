@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Terminal, Server, FolderGit2, ListTodo, Users, Key, History,
   LogOut, User as UserIcon, Shield, Activity, CalendarClock,
-  ShieldAlert, Sparkles, Cpu, X
+  ShieldAlert, Sparkles, Cpu, X, Rocket
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { LLMProviderStatus } from '../types';
@@ -11,6 +11,7 @@ import { getLLMStatusApi, setLLMProviderApi } from '../services/api';
 export type NavTab =
   | 'console'
   | 'tasks'
+  | 'workflows'
   | 'infrastructure'
   | 'projects'
   | 'schedules'
@@ -106,6 +107,14 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, activeT
               {activeTasksCount}
             </span>
           )}
+        </button>
+
+        <button
+          className={`nav-tab-btn ${activeTab === 'workflows' ? 'active' : ''}`}
+          onClick={() => setActiveTab('workflows')}
+        >
+          <Rocket size={15} style={{ color: 'var(--accent-cyan)' }} />
+          Deploy & Workflows
         </button>
 
         <button

@@ -430,73 +430,115 @@ async def deploy_backend(task_id: int, parameters: Dict[str, Any]) -> Dict[str, 
             })
         
         try:
-            project = parameters.get("project", "mom")
+            project_name = parameters.get("project", "mom")
             component = parameters.get("component", "backend")
-            environment = parameters.get("environment", "uat")
+            environment_name = parameters.get("environment", "uat")
             branch = parameters.get("branch", "main")
             
-            await emit(f"🚀 Starting backend deployment for project '{project}' (branch: {branch})...")
+            await emit(f"🚀 Initializing backend deployment for component '{component}' on '{environment_name}'...")
             
             # Find matching deployment config
             async with AsyncSessionLocal() as db_session:
-                stmt = select(ProjectDeployment).where(
-                    ProjectDeployment.component == component
+                from app.models.models import Project, Environment
+                from sqlalchemy import func
+                stmt = (
+                    select(ProjectDeployment)
+                    .join(Project, Project.id == ProjectDeployment.project_id)
+                    .where(func.lower(ProjectDeployment.component) == component.lower())
                 )
+                if project_name:
+                    stmt = stmt.where(func.lower(Project.name).contains(project_name.lower()) | (func.lower(Project.name) == project_name.lower()))
                 result = await db_session.execute(stmt)
                 pd = result.scalars().first()
+
+                if not pd:
+                    stmt_fb = select(ProjectDeployment).where(func.lower(ProjectDeployment.component) == component.lower())
+                    result_fb = await db_session.execute(stmt_fb)
+                    pd = result_fb.scalars().first()
             
-            if not pd:
-                err_msg = f"No deployment config found for {project}/{component}"
-                await emit(f"❌ {err_msg}")
-                te.status = "FAILED"
-                te.error = err_msg
-                await session.commit()
-                return {"status": "FAILED", "output": te.output}
-            
-            # Get target server for the environment
+            server = None
             async with AsyncSessionLocal() as db_session:
-                stmt = select(Server).where(Server.environment_id == pd.environment_id)
-                result = await db_session.execute(stmt)
-                server = result.scalars().first()
+                if pd and pd.server_id:
+                    server = await db_session.get(Server, pd.server_id)
+
+                if not server and pd:
+                    stmt_server = select(Server).where(Server.environment_id == pd.environment_id)
+                    result_server = await db_session.execute(stmt_server)
+                    server = result_server.scalars().first()
+
+                if not server:
+                    from app.models.models import Environment
+                    stmt_env = select(Server).join(Environment, Environment.id == Server.environment_id).where(
+                        func.lower(Environment.name) == environment_name.lower()
+                    )
+                    result_env = await db_session.execute(stmt_env)
+                    server = result_env.scalars().first()
+
+                if not server:
+                    res_any = await db_session.execute(select(Server))
+                    server = res_any.scalars().first()
             
             if not server:
-                err_msg = "No target server configured for environment"
+                err_msg = f"No active server node available in Fleet for deployment"
                 await emit(f"❌ {err_msg}")
                 te.status = "FAILED"
                 te.error = err_msg
                 await session.commit()
                 return {"status": "FAILED", "output": te.output}
             
-            host_key = f"{server.environment_id}:{server.name}"
+            from app.core.ssh import register_server_in_pool
+            register_server_in_pool(server)
+            host_key = f"server:{server.id}"
             executor = get_ssh_executor()
             
-            await emit(f"📡 Connecting to {server.name} ({server.hostname}:{server.port})...")
-            repo_path = pd.repository_path or "/opt/app/backend"
-            await emit(f"📂 Navigating to repository path: {repo_path}")
+            await emit(f"📡 Connecting to server: {server.name} ({server.hostname}:{server.port}) as {server.username}...")
+            repo_path = pd.repository_path if pd and pd.repository_path else f"/opt/{project_name}/{component}"
+            await emit(f"📂 Navigating to target path: {repo_path}")
+
+            # Check if directory exists or create
+            chk_dir = await executor.execute(host_key, f"mkdir -p {repo_path} && cd {repo_path}", timeout=30)
+            if chk_dir.exit_code != 0:
+                await emit(f"⚠️ Warning accessing directory: {chk_dir.stderr or chk_dir.stdout}")
             
-            # Git checkout and sync
-            cmd_git = f"cd {repo_path} && git fetch origin && git checkout {branch} && git pull origin {branch}"
-            await emit(f"⚡ Fetching and pulling branch '{branch}'...")
-            git_res = await executor.execute(host_key, cmd_git, timeout=120)
-            
-            if git_res.exit_code != 0:
-                err_msg = f"Git checkout failed (code {git_res.exit_code}): {git_res.stderr or git_res.stdout}"
-                await emit(f"❌ {err_msg}")
-                te.status = "FAILED"
-                te.error = err_msg
-                await session.commit()
-                return {"status": "FAILED", "output": te.output}
-            
-            await emit(f"✅ Checked out branch '{branch}'")
+            # Check if it's a Git repo
+            git_check = await executor.execute(host_key, f"cd {repo_path} && git rev-parse --is-inside-work-tree", timeout=15)
+            if git_check.exit_code == 0:
+                await emit(f"⚡ Git repository detected. Fetching latest changes on branch '{branch}'...")
+                cmd_git = f"cd {repo_path} && git fetch origin && git checkout {branch} && git pull origin {branch}"
+                git_res = await executor.execute(host_key, cmd_git, timeout=120)
+                if git_res.exit_code != 0:
+                    await emit(f"⚠️ Git pull notice: {git_res.stderr or git_res.stdout}")
+                else:
+                    await emit(f"✅ Successfully checked out and synced branch '{branch}'.")
+            else:
+                await emit(f"ℹ️ Directory '{repo_path}' is not a Git repo. Proceeding directly with deployment script...")
             
             # Run deployment script
-            deploy_script = pd.deployment_script or "./deploy_backend.sh"
-            await emit(f"🔨 Running backend deployment script: {deploy_script}...")
-            cmd_deploy = f"cd {repo_path} && chmod +x {deploy_script} && {deploy_script}"
+            deploy_script = (pd.deployment_script if pd and pd.deployment_script else "./deploy.sh").strip()
+            await emit(f"🔨 Executing deployment script / command: {deploy_script}...")
+
+            if deploy_script.startswith(("./", "/", "bash ", "sh ", "docker ", "docker-compose ", "npm ", "node ", "python ", "python3 ", "sudo ")):
+                exec_cmd = deploy_script
+            elif deploy_script.endswith(".sh"):
+                exec_cmd = f"bash {deploy_script}"
+            else:
+                exec_cmd = f"chmod +x ./{deploy_script} 2>/dev/null; ./{deploy_script} 2>/dev/null || bash {deploy_script} 2>/dev/null || {deploy_script}"
+
+            cmd_deploy = f"cd {repo_path} && {exec_cmd}"
+
             deploy_res = await executor.execute(host_key, cmd_deploy, timeout=300)
             
+            if deploy_res.stdout:
+                for line in deploy_res.stdout.strip().split("\n"):
+                    if line.strip():
+                        await emit(f"  {line}")
+            if deploy_res.stderr:
+                for line in deploy_res.stderr.strip().split("\n"):
+                    if line.strip():
+                        await emit(f"  [stderr] {line}")
+
             if deploy_res.exit_code != 0:
-                err_msg = f"Deployment script failed (code {deploy_res.exit_code}): {deploy_res.stderr or deploy_res.stdout}"
+                err_msg = f"Deployment script failed with exit code ({deploy_res.exit_code})"
                 await emit(f"❌ {err_msg}")
                 te.status = "FAILED"
                 te.error = err_msg
@@ -506,17 +548,17 @@ async def deploy_backend(task_id: int, parameters: Dict[str, Any]) -> Dict[str, 
             await emit("✅ Backend build & service restart completed.")
             
             # Health check
-            health_url = pd.health_check_url
+            health_url = pd.health_check_url if pd else None
             if health_url:
                 await emit(f"🩺 Running post-deploy health check: {health_url}...")
-                await asyncio.sleep(2)
+                await asyncio.sleep(1)
                 cmd_health = f"curl -s -o /dev/null -w '%{{http_code}}' --max-time 15 {health_url}"
                 health_res = await executor.execute(host_key, cmd_health, timeout=20)
                 http_code = health_res.stdout.strip()
                 if health_res.exit_code == 0 and http_code in ("200", "301", "302"):
                     await emit(f"✅ Health check PASSED (HTTP {http_code})")
                 else:
-                    err_msg = f"Health check returned unexpected code: HTTP {http_code}"
+                    err_msg = f"Health check returned code: HTTP {http_code or 'unreachable'}"
                     await emit(f"❌ {err_msg}")
                     te.status = "FAILED"
                     te.error = err_msg

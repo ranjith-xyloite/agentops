@@ -3,6 +3,7 @@ import {
   Task,
   Server,
   Project,
+  ProjectDeployment,
   Environment,
   SystemStats,
   LogStreamEvent,
@@ -15,6 +16,8 @@ import {
   WebhookSubscription,
   PolicyRule,
   LLMProviderStatus,
+  ServerTestResult,
+  PreflightCheckResult,
 } from '../types';
 
 const API_BASE = '/api';
@@ -92,7 +95,10 @@ export async function createUserApi(data: { username: string; email: string; pas
   });
 }
 
-export async function updateUserApi(userId: number, data: Partial<{ email: string; role: string; is_active: boolean }>): Promise<User> {
+export async function updateUserApi(
+  userId: number,
+  data: Partial<{ email: string; role: string; is_active: boolean; password?: string }>
+): Promise<User> {
   return request(`${API_BASE}/users/${userId}`, {
     method: 'PUT',
     body: JSON.stringify(data),
@@ -191,8 +197,102 @@ export async function deleteServer(serverId: number): Promise<void> {
   });
 }
 
+export async function updateServerApi(
+  serverId: number,
+  data: Partial<Omit<Server, 'id' | 'environment_name'>>
+): Promise<Server> {
+  return request(`${API_BASE}/servers/${serverId}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function testServerConnectionApi(data: {
+  hostname: string;
+  port?: number;
+  username: string;
+  authentication_method?: string;
+  password?: string;
+  ssh_key?: string;
+}): Promise<ServerTestResult> {
+  return request(`${API_BASE}/servers/test-connection`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function testExistingServerConnectionApi(serverId: number): Promise<ServerTestResult> {
+  return request(`${API_BASE}/servers/${serverId}/test-connection`, {
+    method: 'POST',
+  });
+}
+
+export async function runPreflightCheckApi(data: {
+  project_id: number;
+  environment_id: number;
+  component?: string;
+}): Promise<PreflightCheckResult> {
+  return request(`${API_BASE}/deployments/preflight-check`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
 export async function listProjects(): Promise<Project[]> {
   return request(`${API_BASE}/projects`);
+}
+
+export async function createProject(data: { name: string; description?: string; repository_url?: string }): Promise<Project> {
+  return request(`${API_BASE}/projects`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteProject(projectId: number): Promise<void> {
+  return request(`${API_BASE}/projects/${projectId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function createProjectDeployment(
+  projectId: number,
+  data: {
+    environment_id: number;
+    component: string;
+    server_id?: number | null;
+    repository_path?: string;
+    deployment_script?: string;
+    health_check_url?: string;
+  }
+): Promise<ProjectDeployment> {
+  return request(`${API_BASE}/projects/${projectId}/deployments`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteProjectDeployment(deploymentId: number): Promise<void> {
+  return request(`${API_BASE}/projects/deployments/${deploymentId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function updateProjectDeployment(
+  deploymentId: number,
+  data: Partial<{
+    environment_id: number;
+    component: string;
+    server_id?: number | null;
+    repository_path?: string;
+    deployment_script?: string;
+    health_check_url?: string;
+  }>
+): Promise<ProjectDeployment> {
+  return request(`${API_BASE}/projects/deployments/${deploymentId}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
 }
 
 export async function listEnvironments(): Promise<Environment[]> {
