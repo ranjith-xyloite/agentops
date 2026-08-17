@@ -574,6 +574,16 @@ async def confirm_task_endpoint(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
+    if current_user.role != UserRole.ADMIN:
+        accessible_projects = await get_user_accessible_projects(current_user, db)
+        params = task.parsed_parameters or {}
+        target_project = params.get("project")
+        if target_project and target_project.lower() not in [p.lower() for p in accessible_projects]:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Access denied: You do not have permissions to execute tasks for project '{target_project}'."
+            )
+
     await log_audit_event(
         db, current_user, "task_confirmed", "task", str(task_id),
         {"user_request": task.user_request}, request.client.host if request.client else None

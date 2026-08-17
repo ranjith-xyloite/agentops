@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Terminal as TerminalIcon, Copy, Trash2, StopCircle, Play, XCircle, AlertTriangle } from 'lucide-react';
 import { Task, TaskStatus } from '../types';
+import { useAuth } from '../context/AuthContext';
 
 interface TaskTerminalProps {
   activeTaskId: number | null;
@@ -21,6 +22,8 @@ export const TaskTerminal: React.FC<TaskTerminalProps> = ({
   onCancelTask,
   onClearLogs,
 }) => {
+  const { role } = useAuth();
+  const isAdmin = role === 'admin';
   const terminalEndRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
 
@@ -99,14 +102,16 @@ export const TaskTerminal: React.FC<TaskTerminalProps> = ({
             {copied ? 'Copied' : 'Copy'}
           </button>
 
-          <button
-            className="btn btn-secondary btn-sm"
-            onClick={onClearLogs}
-            disabled={logs.length === 0}
-            title="Clear output"
-          >
-            <Trash2 size={13} />
-          </button>
+          {isAdmin && (
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={onClearLogs}
+              disabled={logs.length === 0}
+              title="Clear output (Admin only)"
+            >
+              <Trash2 size={13} />
+            </button>
+          )}
         </div>
       </div>
 
