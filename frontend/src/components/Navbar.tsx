@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Terminal, Server, FolderGit2, ListTodo, Users, Key, History,
   LogOut, User as UserIcon, Shield, Activity, CalendarClock,
-  ShieldAlert, Sparkles, Cpu, X, Rocket
+  ShieldAlert, Sparkles, Cpu, X, Rocket, Layers
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { LLMProviderStatus } from '../types';
@@ -10,6 +10,7 @@ import { getLLMStatusApi, setLLMProviderApi } from '../services/api';
 
 export type NavTab =
   | 'console'
+  | 'deploy'
   | 'tasks'
   | 'workflows'
   | 'infrastructure'
@@ -97,6 +98,14 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, activeT
         </button>
 
         <button
+          className={`nav-tab-btn ${activeTab === 'deploy' ? 'active' : ''}`}
+          onClick={() => setActiveTab('deploy')}
+        >
+          <Rocket size={15} style={{ color: 'var(--status-success)' }} />
+          Deploy Hub
+        </button>
+
+        <button
           className={`nav-tab-btn ${activeTab === 'tasks' ? 'active' : ''}`}
           onClick={() => setActiveTab('tasks')}
         >
@@ -113,8 +122,8 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, activeT
           className={`nav-tab-btn ${activeTab === 'workflows' ? 'active' : ''}`}
           onClick={() => setActiveTab('workflows')}
         >
-          <Rocket size={15} style={{ color: 'var(--accent-cyan)' }} />
-          Deploy & Workflows
+          <Layers size={15} style={{ color: 'var(--accent-purple)' }} />
+          Workflows
         </button>
 
         <button

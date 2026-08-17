@@ -7,6 +7,7 @@ import { TaskList } from './components/TaskList';
 import { ServerFleet } from './components/ServerFleet';
 import { ProjectDeployments } from './components/ProjectDeployments';
 import { WorkflowDeployer } from './components/WorkflowDeployer';
+import { DeploymentHub } from './components/DeploymentHub';
 import { SchedulerManager } from './components/SchedulerManager';
 import { PoliciesAndWebhooks } from './components/PoliciesAndWebhooks';
 import { UserManagement } from './components/UserManagement';
@@ -340,6 +341,21 @@ export const App: React.FC = () => {
             }}
             onConfirmTask={handleConfirmTask}
             onCancelTask={handleCancelTask}
+          />
+        )}
+
+        {activeTab === 'deploy' && (
+          <DeploymentHub
+            projects={projects}
+            environments={environments}
+            servers={servers}
+            tasks={tasks}
+            onTriggerDeploy={handleTriggerDeploy}
+            onSelectTaskToStream={(id) => {
+              setActiveTaskId(id);
+              setActiveTab('console');
+            }}
+            onNavigateToWorkflows={() => setActiveTab('workflows')}
           />
         )}
 

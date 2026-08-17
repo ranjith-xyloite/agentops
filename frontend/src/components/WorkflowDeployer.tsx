@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Rocket, Play, CheckCircle2, AlertCircle, RefreshCw, Server,
   FolderGit2, Layers, ShieldCheck, Activity, Plus, Trash2,
-  Code, Settings2, Edit3, X, ShieldAlert
+  Code, Settings2, Edit3, X, ShieldAlert, Filter
 } from 'lucide-react';
 import { Project, Environment, Server as ServerType, PreflightCheckResult, ProjectDeployment } from '../types';
 import { runPreflightCheckApi } from '../services/api';
@@ -50,6 +50,10 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
   const [selectedEnvId, setSelectedEnvId] = useState<number>(environments[0]?.id || 1);
   const [selectedComponent, setSelectedComponent] = useState<string>('frontend');
   const [targetBranch, setTargetBranch] = useState<string>('main');
+
+  // Workflow Overview Filter State
+  const [filterProjectId, setFilterProjectId] = useState<number | 'ALL'>('ALL');
+  const [filterEnvId, setFilterEnvId] = useState<number | 'ALL'>('ALL');
 
   // Pre-flight check state
   const [isChecking, setIsChecking] = useState(false);
@@ -708,39 +712,151 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
       )}
 
 
-      {/* 2. Global Workflow Mapping Overview */}
+      {/* 2. Global Workflow Mapping Overview with Project & Environment Filtering */}
       <div className="card-panel">
-        <div className="panel-header">
+        <div className="panel-header" style={{ flexWrap: 'wrap', gap: 12 }}>
           <div className="panel-title">
             <Layers size={18} style={{ color: 'var(--accent-purple)' }} />
             <span>Multi-Environment Workflow Mappings</span>
           </div>
 
-          {isAdmin && (
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={() => {
-                setModalProjectId(activeProject?.id || 1);
-                setModalEnvId(activeEnvironment?.id || 1);
-                setModalServerId(servers[0]?.id);
-                setShowAddFlowModal(true);
-              }}
-            >
-              <Plus size={14} /> Add Deployment Flow
-            </button>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            {/* Filter by Project */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <FolderGit2 size={13} style={{ color: 'var(--accent-cyan)' }} />
+              <select
+                className="chat-input"
+                style={{ padding: '4px 8px', fontSize: '12px', background: '#111827', color: '#f8fafc', minWidth: '150px' }}
+                value={filterProjectId}
+                onChange={(e) => setFilterProjectId(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value))}
+              >
+                <option value="ALL" style={{ background: '#111827', color: '#f8fafc' }}>All Projects ({projects.length})</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id} style={{ background: '#111827', color: '#f8fafc' }}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Filter by Environment */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Activity size={13} style={{ color: 'var(--accent-blue)' }} />
+              <select
+                className="chat-input"
+                style={{ padding: '4px 8px', fontSize: '12px', background: '#111827', color: '#f8fafc', minWidth: '140px' }}
+                value={filterEnvId}
+                onChange={(e) => setFilterEnvId(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value))}
+              >
+                <option value="ALL" style={{ background: '#111827', color: '#f8fafc' }}>All Environments</option>
+                {environments.map((env) => (
+                  <option key={env.id} value={env.id} style={{ background: '#111827', color: '#f8fafc' }}>
+                    {env.name.toUpperCase()}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Reset Filters */}
+            {(filterProjectId !== 'ALL' || filterEnvId !== 'ALL') && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                style={{ fontSize: '11px', padding: '4px 8px' }}
+                onClick={() => {
+                  setFilterProjectId('ALL');
+                  setFilterEnvId('ALL');
+                }}
+              >
+                <X size={12} /> Clear Filter
+              </button>
+            )}
+
+            {isAdmin && (
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => {
+                  setModalProjectId(typeof filterProjectId === 'number' ? filterProjectId : (activeProject?.id || 1));
+                  setModalEnvId(typeof filterEnvId === 'number' ? filterEnvId : (activeEnvironment?.id || 1));
+                  setModalServerId(servers[0]?.id);
+                  setShowAddFlowModal(true);
+                }}
+              >
+                <Plus size={14} /> Add Deployment Flow
+              </button>
+            )}
+          </div>
         </div>
 
         <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {projects.map((p) => {
-            const allDeployments = p.deployments || [];
-            const envMap: { [envId: number]: ProjectDeployment[] } = {};
-            allDeployments.forEach((d) => {
-              if (!envMap[d.environment_id]) envMap[d.environment_id] = [];
-              envMap[d.environment_id].push(d);
+          {(() => {
+            const displayedProjects = projects.filter((p) => {
+              if (filterProjectId !== 'ALL' && p.id !== filterProjectId) return false;
+              if (filterEnvId !== 'ALL') {
+                const hasEnv = (p.deployments || []).some((d) => d.environment_id === filterEnvId);
+                if (!hasEnv) return false;
+              }
+              return true;
             });
 
-            const configuredEnvIds = Object.keys(envMap).map(Number);
+            if (displayedProjects.length === 0) {
+              const selProjName = projects.find(p => p.id === filterProjectId)?.name;
+              const selEnvName = environments.find(e => e.id === filterEnvId)?.name?.toUpperCase();
+
+              return (
+                <div style={{
+                  padding: 32,
+                  textAlign: 'center',
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-md)',
+                  color: 'var(--text-secondary)'
+                }}>
+                  <Filter size={28} style={{ color: 'var(--text-muted)', marginBottom: 8 }} />
+                  <h4 style={{ fontSize: '14px', color: 'var(--text-primary)', margin: '4px 0 8px' }}>
+                    No matching deployment flows found
+                  </h4>
+                  <p style={{ fontSize: '12px', margin: 0, marginBottom: 16 }}>
+                    No flows configured for {selProjName ? `project "${selProjName}"` : 'selected projects'} in {selEnvName ? `"${selEnvName}" environment` : 'selected environments'}.
+                  </p>
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => {
+                        setFilterProjectId('ALL');
+                        setFilterEnvId('ALL');
+                      }}
+                    >
+                      Reset Filters
+                    </button>
+                    {isAdmin && (
+                      <button
+                        className="btn btn-primary btn-sm"
+                        onClick={() => {
+                          if (typeof filterProjectId === 'number') setModalProjectId(filterProjectId);
+                          if (typeof filterEnvId === 'number') setModalEnvId(filterEnvId);
+                          setShowAddFlowModal(true);
+                        }}
+                      >
+                        <Plus size={13} /> Configure Flow for this Selection
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            }
+
+            return displayedProjects.map((p) => {
+              const allDeployments = p.deployments || [];
+              const envMap: { [envId: number]: ProjectDeployment[] } = {};
+              allDeployments.forEach((d) => {
+                if (!envMap[d.environment_id]) envMap[d.environment_id] = [];
+                envMap[d.environment_id].push(d);
+              });
+
+              const configuredEnvIds = Object.keys(envMap)
+                .map(Number)
+                .filter((eId) => filterEnvId === 'ALL' || eId === filterEnvId);
 
             return (
               <div key={p.id} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: 18 }}>
@@ -1058,7 +1174,8 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
                 )}
               </div>
             );
-          })}
+          });
+        })()}
         </div>
       </div>
     </div>
