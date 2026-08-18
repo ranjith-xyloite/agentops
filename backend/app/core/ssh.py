@@ -151,7 +151,7 @@ class SSHExecutor:
         self,
         host_key: str,
         command: str,
-        timeout: int = 300,
+        timeout: int = 1800,
         env: Optional[Dict[str, str]] = None,
         cwd: Optional[str] = None
     ) -> CommandResult:
@@ -161,7 +161,7 @@ class SSHExecutor:
         Args:
             host_key: Registered host identifier
             command: Command to execute
-            timeout: Command timeout in seconds
+            timeout: Command timeout in seconds (default 1800s / 30m)
             env: Environment variables
             cwd: Working directory
             
@@ -214,7 +214,7 @@ class SSHExecutor:
         self,
         host_key: str,
         command: str,
-        timeout: int = 300,
+        timeout: int = 1800,
         env: Optional[Dict[str, str]] = None,
         cwd: Optional[str] = None,
         on_stdout: Optional[callable] = None,

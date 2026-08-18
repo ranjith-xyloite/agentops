@@ -34,6 +34,8 @@ services:
       - SECRET_KEY=agentops_jwt_secret_key_32_bytes_super_secure_2026_phase4
       - APP_HOST=0.0.0.0
       - APP_PORT=8000
+      - DEPLOYMENT_TIMEOUT=1800
+      - GIT_TIMEOUT=1800
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:

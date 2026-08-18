@@ -576,12 +576,15 @@ async def deploy_backend(task_id: int, parameters: Dict[str, Any]) -> Dict[str, 
             if chk_dir.exit_code != 0:
                 await emit(f"⚠️ Warning accessing directory: {chk_dir.stderr or chk_dir.stdout}")
             
+            git_timeout = int(os.getenv("GIT_TIMEOUT", "1800"))
+            deploy_timeout = int(os.getenv("DEPLOYMENT_TIMEOUT", "1800"))
+
             # Check if it's a Git repo
             git_check = await executor.execute(host_key, f"cd {repo_path} && git rev-parse --is-inside-work-tree", timeout=15)
             if git_check.exit_code == 0:
                 await emit(f"⚡ Git repository detected. Fetching latest changes on branch '{branch}'...")
                 cmd_git = f"cd {repo_path} && git fetch origin && git checkout {branch} && git pull origin {branch}"
-                git_res = await executor.execute(host_key, cmd_git, timeout=120)
+                git_res = await executor.execute(host_key, cmd_git, timeout=git_timeout)
                 if git_res.exit_code != 0:
                     await emit(f"⚠️ Git pull notice: {git_res.stderr or git_res.stdout}")
                 else:
@@ -602,7 +605,7 @@ async def deploy_backend(task_id: int, parameters: Dict[str, Any]) -> Dict[str, 
 
             cmd_deploy = f"cd {repo_path} && {exec_cmd}"
 
-            deploy_res = await executor.execute(host_key, cmd_deploy, timeout=300)
+            deploy_res = await executor.execute(host_key, cmd_deploy, timeout=deploy_timeout)
             
             if deploy_res.stdout:
                 for line in deploy_res.stdout.strip().split("\n"):
