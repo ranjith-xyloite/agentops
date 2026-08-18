@@ -260,13 +260,13 @@ export const ServerFleet: React.FC<ServerFleetProps> = ({
               <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Authentication Method *</label>
               <select
                 className="chat-input"
-                style={{ width: '100%', marginTop: 4, background: '#111827', color: '#f8fafc' }}
+                style={{ width: '100%', marginTop: 4 }}
                 value={authMethod}
                 onChange={(e) => setAuthMethod(e.target.value as any)}
               >
-                <option value="password" style={{ background: '#111827', color: '#f8fafc' }}>SSH Password Authentication</option>
-                <option value="ssh_key" style={{ background: '#111827', color: '#f8fafc' }}>SSH Key (Default Host Key)</option>
-                <option value="custom_key" style={{ background: '#111827', color: '#f8fafc' }}>Custom SSH Private Key</option>
+                <option value="password">SSH Password Authentication</option>
+                <option value="ssh_key">SSH Key (Default Host Key)</option>
+                <option value="custom_key">Custom SSH Private Key</option>
               </select>
             </div>
 
@@ -421,13 +421,13 @@ export const ServerFleet: React.FC<ServerFleetProps> = ({
               <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Authentication Method *</label>
               <select
                 className="chat-input"
-                style={{ width: '100%', marginTop: 4, background: '#111827', color: '#f8fafc' }}
+                style={{ width: '100%', marginTop: 4 }}
                 value={editAuthMethod}
                 onChange={(e) => setEditAuthMethod(e.target.value as any)}
               >
-                <option value="password" style={{ background: '#111827', color: '#f8fafc' }}>SSH Password Authentication</option>
-                <option value="ssh_key" style={{ background: '#111827', color: '#f8fafc' }}>SSH Key (Default Host Key)</option>
-                <option value="custom_key" style={{ background: '#111827', color: '#f8fafc' }}>Custom SSH Private Key</option>
+                <option value="password">SSH Password Authentication</option>
+                <option value="ssh_key">SSH Key (Default Host Key)</option>
+                <option value="custom_key">Custom SSH Private Key</option>
               </select>
             </div>
 

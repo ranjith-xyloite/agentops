@@ -88,10 +88,13 @@ class TaskService:
     async def create_task(self, user_request: str, parsed: ToolRequest, user_id: Optional[int] = None) -> Task:
         async with AsyncSessionLocal() as session:
             steps_data = [s.model_dump() for s in parsed.steps] if parsed.steps else None
+            intent_val = parsed.tool or parsed.question or "general"
+            if len(intent_val) > 95:
+                intent_val = intent_val[:92] + "..."
             t = Task(
                 user_id=user_id,
                 user_request=user_request,
-                intent=parsed.tool or parsed.question,
+                intent=intent_val,
                 status="AWAITING_CONFIRMATION" if parsed.requires_confirmation else "PLANNED",
                 requires_confirmation=parsed.requires_confirmation or False,
                 workflow_dag=steps_data,

@@ -189,13 +189,13 @@ export const UserManagement: React.FC<UserManagementProps> = ({ projects }) => {
               <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Assigned Role *</label>
               <select
                 className="chat-input"
-                style={{ width: '100%', marginTop: 4, background: '#111827', color: '#f8fafc' }}
+                style={{ width: '100%', marginTop: 4 }}
                 value={role}
                 onChange={(e) => setRole(e.target.value as UserRole)}
               >
-                <option value="operator" style={{ background: '#111827', color: '#f8fafc' }}>Operator (Deploy & Execute)</option>
-                <option value="viewer" style={{ background: '#111827', color: '#f8fafc' }}>Viewer (Read Only)</option>
-                <option value="admin" style={{ background: '#111827', color: '#f8fafc' }}>Admin (Full Control)</option>
+                <option value="operator">Operator (Deploy & Execute)</option>
+                <option value="viewer">Viewer (Read Only)</option>
+                <option value="admin">Admin (Full Control)</option>
               </select>
             </div>
 
@@ -269,13 +269,13 @@ export const UserManagement: React.FC<UserManagementProps> = ({ projects }) => {
               <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Role *</label>
               <select
                 className="chat-input"
-                style={{ width: '100%', marginTop: 4, background: '#111827', color: '#f8fafc' }}
+                style={{ width: '100%', marginTop: 4 }}
                 value={editRole}
                 onChange={(e) => setEditRole(e.target.value as UserRole)}
               >
-                <option value="operator" style={{ background: '#111827', color: '#f8fafc' }}>Operator (Deploy & Execute)</option>
-                <option value="viewer" style={{ background: '#111827', color: '#f8fafc' }}>Viewer (Read Only)</option>
-                <option value="admin" style={{ background: '#111827', color: '#f8fafc' }}>Admin (Full Control)</option>
+                <option value="operator">Operator (Deploy & Execute)</option>
+                <option value="viewer">Viewer (Read Only)</option>
+                <option value="admin">Admin (Full Control)</option>
               </select>
             </div>
 
@@ -283,12 +283,12 @@ export const UserManagement: React.FC<UserManagementProps> = ({ projects }) => {
               <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Status *</label>
               <select
                 className="chat-input"
-                style={{ width: '100%', marginTop: 4, background: '#111827', color: '#f8fafc' }}
+                style={{ width: '100%', marginTop: 4 }}
                 value={editIsActive ? 'active' : 'disabled'}
                 onChange={(e) => setEditIsActive(e.target.value === 'active')}
               >
-                <option value="active" style={{ background: '#111827', color: '#f8fafc' }}>Active</option>
-                <option value="disabled" style={{ background: '#111827', color: '#f8fafc' }}>Disabled / Suspended</option>
+                <option value="active">Active</option>
+                <option value="disabled">Disabled / Suspended</option>
               </select>
             </div>
 

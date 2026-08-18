@@ -34,7 +34,8 @@ from app.services.task_service import (
     get_task_with_executions,
     cancel_task,
     task_broadcaster,
-    execute_confirmed_task
+    execute_confirmed_task,
+    task_service
 )
 from app.core.security import (
     hash_password, verify_password, create_access_token, create_refresh_token,
@@ -576,7 +577,8 @@ async def confirm_task_endpoint(
 
     if current_user.role != UserRole.ADMIN:
         accessible_projects = await get_user_accessible_projects(current_user, db)
-        params = task.parsed_parameters or {}
+        parsed_plan = await task_service.last_parsed_for_task(task_id)
+        params = (parsed_plan.parameters if parsed_plan else None) or {}
         target_project = params.get("project")
         if target_project and target_project.lower() not in [p.lower() for p in accessible_projects]:
             raise HTTPException(
@@ -1579,12 +1581,13 @@ async def set_llm_provider(
     multi_llm.set_provider(
         provider=payload.provider,
         model=payload.model_name,
-        api_key=payload.api_key
+        api_key=payload.api_key,
+        base_url=payload.base_url
     )
     await log_audit_event(
         session, current_user, "configure_llm", "system", "llm",
-        {"provider": payload.provider, "model": payload.model_name},
+        {"provider": payload.provider, "model": payload.model_name, "base_url": payload.base_url},
         request.client.host if request.client else None
     )
-    return {"status": "configured", "provider": payload.provider, "model": payload.model_name}
+    return {"status": "configured", "provider": payload.provider, "model": payload.model_name, "base_url": payload.base_url}
 

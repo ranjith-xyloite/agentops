@@ -146,8 +146,6 @@ export const DeploymentHub: React.FC<DeploymentHubProps> = ({
                   width: '100%',
                   padding: '10px 14px',
                   fontSize: '13.5px',
-                  background: '#090d16',
-                  color: '#f8fafc',
                   border: '1px solid var(--border-subtle)',
                   borderRadius: 'var(--radius-md)'
                 }}
@@ -158,7 +156,7 @@ export const DeploymentHub: React.FC<DeploymentHubProps> = ({
                 }}
               >
                 {projects.map((p) => (
-                  <option key={p.id} value={p.id} style={{ background: '#090d16', color: '#f8fafc' }}>
+                  <option key={p.id} value={p.id}>
                     {p.name} {p.description ? `— ${p.description}` : ''}
                   </option>
                 ))}
@@ -191,8 +189,6 @@ export const DeploymentHub: React.FC<DeploymentHubProps> = ({
                   width: '100%',
                   padding: '10px 14px',
                   fontSize: '13.5px',
-                  background: '#090d16',
-                  color: '#f8fafc',
                   border: '1px solid var(--border-subtle)',
                   borderRadius: 'var(--radius-md)'
                 }}
@@ -205,7 +201,7 @@ export const DeploymentHub: React.FC<DeploymentHubProps> = ({
                 {environments.map((env) => {
                   const flowCount = (activeProject?.deployments || []).filter((d) => d.environment_id === env.id).length;
                   return (
-                    <option key={env.id} value={env.id} style={{ background: '#090d16', color: '#f8fafc' }}>
+                    <option key={env.id} value={env.id}>
                       {env.name.toUpperCase()} {flowCount > 0 ? `(${flowCount} configured ${flowCount === 1 ? 'flow' : 'flows'})` : '(No flows configured)'}
                     </option>
                   );
@@ -238,8 +234,6 @@ export const DeploymentHub: React.FC<DeploymentHubProps> = ({
                     flex: 1,
                     padding: '10px 14px',
                     fontSize: '13.5px',
-                    background: '#090d16',
-                    color: '#f8fafc',
                     border: '1px solid var(--border-subtle)',
                     borderRadius: 'var(--radius-md)'
                   }}

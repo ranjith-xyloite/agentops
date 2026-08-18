@@ -386,4 +386,5 @@ class LLMProviderConfig(BaseModel):
 class LLMProviderOut(BaseModel):
     active_provider: str
     active_model: str
+    active_base_url: Optional[str] = None
     available_providers: List[str]

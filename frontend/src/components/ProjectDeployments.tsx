@@ -308,12 +308,12 @@ export const ProjectDeployments: React.FC<ProjectDeploymentsProps> = ({
               <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Initial Target Environment *</label>
               <select
                 className="chat-input"
-                style={{ width: '100%', marginTop: 4, background: '#111827', color: '#f8fafc' }}
+                style={{ width: '100%', marginTop: 4 }}
                 value={createEnvId}
                 onChange={(e) => setCreateEnvId(Number(e.target.value))}
               >
                 {environments.map((env) => (
-                  <option key={env.id} value={env.id} style={{ background: '#111827', color: '#f8fafc' }}>
+                  <option key={env.id} value={env.id}>
                     {env.name.toUpperCase()} {env.name.toLowerCase() === 'uat' ? '(UAT Environment)' : env.name.toLowerCase() === 'develop' ? '(Development Environment)' : ''}
                   </option>
                 ))}
@@ -324,13 +324,13 @@ export const ProjectDeployments: React.FC<ProjectDeploymentsProps> = ({
               <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Assign Fleet Server Node</label>
               <select
                 className="chat-input"
-                style={{ width: '100%', marginTop: 4, background: '#111827', color: '#f8fafc' }}
+                style={{ width: '100%', marginTop: 4 }}
                 value={createServerId || ''}
                 onChange={(e) => setCreateServerId(e.target.value ? Number(e.target.value) : undefined)}
               >
-                <option value="" style={{ background: '#111827', color: '#f8fafc' }}>Auto-resolve from fleet</option>
+                <option value="">Auto-resolve from fleet</option>
                 {servers.map((s) => (
-                  <option key={s.id} value={s.id} style={{ background: '#111827', color: '#f8fafc' }}>
+                  <option key={s.id} value={s.id}>
                     {s.name} ({s.hostname})
                   </option>
                 ))}
@@ -450,13 +450,13 @@ export const ProjectDeployments: React.FC<ProjectDeploymentsProps> = ({
               <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Target Project *</label>
               <select
                 className="chat-input"
-                style={{ width: '100%', marginTop: 4, background: '#111827', color: '#f8fafc' }}
+                style={{ width: '100%', marginTop: 4 }}
                 value={targetProjectId}
                 onChange={(e) => setTargetProjectId(Number(e.target.value))}
                 required
               >
                 {projects.map((p) => (
-                  <option key={p.id} value={p.id} style={{ background: '#111827', color: '#f8fafc' }}>
+                  <option key={p.id} value={p.id}>
                     {p.name}
                   </option>
                 ))}
@@ -467,13 +467,13 @@ export const ProjectDeployments: React.FC<ProjectDeploymentsProps> = ({
               <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Target Environment *</label>
               <select
                 className="chat-input"
-                style={{ width: '100%', marginTop: 4, background: '#111827', color: '#f8fafc' }}
+                style={{ width: '100%', marginTop: 4 }}
                 value={envId}
                 onChange={(e) => setEnvId(Number(e.target.value))}
                 required
               >
                 {environments.map((env) => (
-                  <option key={env.id} value={env.id} style={{ background: '#111827', color: '#f8fafc' }}>
+                  <option key={env.id} value={env.id}>
                     {env.name.toUpperCase()}
                   </option>
                 ))}
@@ -484,13 +484,13 @@ export const ProjectDeployments: React.FC<ProjectDeploymentsProps> = ({
               <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Target Fleet Server Node</label>
               <select
                 className="chat-input"
-                style={{ width: '100%', marginTop: 4, background: '#111827', color: '#f8fafc' }}
+                style={{ width: '100%', marginTop: 4 }}
                 value={targetServerId || ''}
                 onChange={(e) => setTargetServerId(e.target.value ? Number(e.target.value) : undefined)}
               >
-                <option value="" style={{ background: '#111827', color: '#f8fafc' }}>Auto-resolve from fleet</option>
+                <option value="">Auto-resolve from fleet</option>
                 {servers.map((s) => (
-                  <option key={s.id} value={s.id} style={{ background: '#111827', color: '#f8fafc' }}>
+                  <option key={s.id} value={s.id}>
                     {s.name} ({s.hostname}:{s.port} - {s.username})
                   </option>
                 ))}
@@ -824,13 +824,13 @@ export const ProjectDeployments: React.FC<ProjectDeploymentsProps> = ({
                                               <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Target Environment *</label>
                                               <select
                                                 className="chat-input"
-                                                style={{ width: '100%', marginTop: 4, background: '#111827', color: '#f8fafc' }}
+                                                style={{ width: '100%', marginTop: 4 }}
                                                 value={editEnvId}
                                                 onChange={(e) => setEditEnvId(Number(e.target.value))}
                                                 required
                                               >
                                                 {environments.map((env) => (
-                                                  <option key={env.id} value={env.id} style={{ background: '#111827', color: '#f8fafc' }}>
+                                                  <option key={env.id} value={env.id}>
                                                     {env.name.toUpperCase()}
                                                   </option>
                                                 ))}
@@ -841,13 +841,13 @@ export const ProjectDeployments: React.FC<ProjectDeploymentsProps> = ({
                                               <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Target Fleet Server Node</label>
                                               <select
                                                 className="chat-input"
-                                                style={{ width: '100%', marginTop: 4, background: '#111827', color: '#f8fafc' }}
+                                                style={{ width: '100%', marginTop: 4 }}
                                                 value={editServerId || ''}
                                                 onChange={(e) => setEditServerId(e.target.value ? Number(e.target.value) : undefined)}
                                               >
-                                                <option value="" style={{ background: '#111827', color: '#f8fafc' }}>Auto-resolve from fleet</option>
+                                                <option value="">Auto-resolve from fleet</option>
                                                 {servers.map((s) => (
-                                                  <option key={s.id} value={s.id} style={{ background: '#111827', color: '#f8fafc' }}>
+                                                  <option key={s.id} value={s.id}>
                                                     {s.name} ({s.hostname}:{s.port} - {s.username})
                                                   </option>
                                                 ))}

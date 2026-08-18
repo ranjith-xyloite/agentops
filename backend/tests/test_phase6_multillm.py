@@ -33,3 +33,39 @@ async def test_multillm_heuristic_dag_parsing():
     assert plan.steps is not None
     assert len(plan.steps) >= 3
     assert plan.requires_confirmation is True
+
+
+@pytest.mark.asyncio
+async def test_multillm_opensource_providers_with_api_key(admin_headers):
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # Test configuring Groq with API key
+        groq_payload = {
+            "provider": "groq",
+            "model_name": "llama-3.3-70b-versatile",
+            "api_key": "gsk_test_mock_key_123"
+        }
+        res = await client.post("/api/system/llm", headers=admin_headers, json=groq_payload)
+        assert res.status_code == 200
+        assert res.json()["status"] == "configured"
+        assert res.json()["provider"] == "groq"
+
+        # Verify status reflect active Groq provider and model
+        status_res = await client.get("/api/system/llm", headers=admin_headers)
+        assert status_res.status_code == 200
+        data = status_res.json()
+        assert data["active_provider"] == "groq"
+        assert data["active_model"] == "llama-3.3-70b-versatile"
+        assert "api.groq.com" in data["active_base_url"]
+
+        # Test configuring custom OpenAI-compatible endpoint with custom Base URL
+        custom_payload = {
+            "provider": "openai_compatible",
+            "model_name": "meta-llama/llama-3.3-70b-instruct",
+            "api_key": "sk-custom-api-key",
+            "base_url": "https://openrouter.ai/api/v1"
+        }
+        res2 = await client.post("/api/system/llm", headers=admin_headers, json=custom_payload)
+        assert res2.status_code == 200
+        assert res2.json()["base_url"] == "https://openrouter.ai/api/v1"
+

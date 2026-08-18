@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Terminal, Server, FolderGit2, ListTodo, Users, Key, History,
   LogOut, User as UserIcon, Shield, Activity, CalendarClock,
@@ -7,6 +8,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { LLMProviderStatus } from '../types';
 import { getLLMStatusApi, setLLMProviderApi } from '../services/api';
+import { ThemeToggle } from './ThemeToggle';
 
 export type NavTab =
   | 'console'
@@ -35,6 +37,20 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, activeT
   const [selectedProvider, setSelectedProvider] = useState('ollama');
   const [selectedModel, setSelectedModel] = useState('qwen3');
   const [apiKey, setApiKey] = useState('');
+  const [baseUrl, setBaseUrl] = useState('');
+
+  const defaultModels: Record<string, string> = {
+    ollama: 'qwen3',
+    groq: 'llama-3.3-70b-versatile',
+    openrouter: 'meta-llama/llama-3.3-70b-instruct',
+    deepseek: 'deepseek-chat',
+    together: 'meta-llama/Llama-3.3-70B-Instruct-Turbo',
+    openai_compatible: 'llama-3.3-70b-instruct',
+    openai: 'gpt-4o-mini',
+    anthropic: 'claude-3-5-sonnet-20241022',
+    gemini: 'gemini-1.5-flash',
+    heuristic_fallback: 'deterministic',
+  };
 
   const fetchLLMStatus = async () => {
     try {
@@ -42,6 +58,9 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, activeT
       setLlmStatus(res);
       setSelectedProvider(res.active_provider);
       setSelectedModel(res.active_model);
+      if (res.active_base_url) {
+        setBaseUrl(res.active_base_url);
+      }
     } catch (e) {
       // ignore
     }
@@ -51,6 +70,13 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, activeT
     fetchLLMStatus();
   }, []);
 
+  const handleProviderChange = (newProvider: string) => {
+    setSelectedProvider(newProvider);
+    if (defaultModels[newProvider]) {
+      setSelectedModel(defaultModels[newProvider]);
+    }
+  };
+
   const handleSaveLLM = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -58,6 +84,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, activeT
         provider: selectedProvider,
         model_name: selectedModel,
         api_key: apiKey || undefined,
+        base_url: baseUrl || undefined,
       });
       await fetchLLMStatus();
       setShowLLMModal(false);
@@ -212,6 +239,9 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, activeT
           </button>
         )}
 
+        {/* Dark / Light / System Mode Switcher */}
+        <ThemeToggle />
+
         {user ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{
@@ -249,28 +279,63 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, activeT
       </div>
 
       {/* Multi-LLM Provider Configuration Modal */}
-      {showLLMModal && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(7, 10, 17, 0.85)', backdropFilter: 'blur(4px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16
-        }}>
-          <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-medium)', borderRadius: 'var(--radius-lg)', width: '100%', maxWidth: '480px', padding: 24 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+      {showLLMModal && typeof document !== 'undefined' && createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(7, 10, 17, 0.85)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '16px',
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowLLMModal(false);
+          }}
+        >
+          <div
+            style={{
+              background: 'var(--bg-secondary)',
+              border: '1px solid var(--border-medium)',
+              borderRadius: 'var(--radius-lg)',
+              width: '100%',
+              maxWidth: '500px',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              padding: '24px',
+              boxShadow: '0 25px 60px rgba(0, 0, 0, 0.7)',
+              position: 'relative',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Cpu size={18} style={{ color: 'var(--accent-purple)' }} />
                 <h3 style={{ fontSize: '16px', fontWeight: 700 }}>Multi-LLM Gateway Settings</h3>
               </div>
-              <button className="btn btn-secondary btn-sm" onClick={() => setShowLLMModal(false)}>
-                <X size={14} />
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={() => setShowLLMModal(false)}
+                type="button"
+                style={{ padding: '4px 8px' }}
+              >
+                <X size={15} />
               </button>
             </div>
 
             <form onSubmit={handleSaveLLM} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
                 <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: 4 }}>Active LLM Provider</label>
-                <select className="input-field" value={selectedProvider} onChange={(e) => setSelectedProvider(e.target.value)}>
-                  <option value="ollama">Local Ollama (qwen3 / llama3)</option>
-                  <option value="openai">OpenAI (GPT-4o / GPT-4o-mini)</option>
+                <select className="input-field" value={selectedProvider} onChange={(e) => handleProviderChange(e.target.value)}>
+                  <option value="ollama">Local Ollama (qwen3, llama3, deepseek)</option>
+                  <option value="groq">Groq Cloud (Llama 3.3 70B, Mixtral - Ultra Fast)</option>
+                  <option value="openrouter">OpenRouter (DeepSeek R1, Llama 3.3, Qwen 2.5)</option>
+                  <option value="deepseek">DeepSeek Official API (DeepSeek V3 / R1)</option>
+                  <option value="together">Together AI (Llama 3.3, Qwen 2.5)</option>
+                  <option value="openai_compatible">Custom OpenAI-Compatible Endpoint (vLLM, etc.)</option>
+                  <option value="openai">OpenAI (GPT-4o, GPT-4o-mini)</option>
                   <option value="anthropic">Anthropic (Claude 3.5 Sonnet)</option>
                   <option value="gemini">Google Gemini (Gemini 1.5 / 2.0)</option>
                   <option value="heuristic_fallback">Offline Deterministic Heuristic</option>
@@ -278,11 +343,11 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, activeT
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: 4 }}>Model Name</label>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: 4 }}>Model Name / ID</label>
                 <input
                   type="text"
                   className="input-field font-mono"
-                  placeholder="e.g. qwen3, gpt-4o-mini, claude-3-5-sonnet"
+                  placeholder="e.g. llama-3.3-70b-versatile, deepseek-chat, qwen3"
                   value={selectedModel}
                   onChange={(e) => setSelectedModel(e.target.value)}
                 />
@@ -294,9 +359,30 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, activeT
                   <input
                     type="password"
                     className="input-field font-mono"
-                    placeholder="sk-..."
+                    placeholder="Enter provider API key (e.g. gsk_..., sk-or-..., sk-...)"
                     value={apiKey}
                     onChange={(e) => setApiKey(e.target.value)}
+                  />
+                </div>
+              )}
+
+              {(selectedProvider === 'openai_compatible' || selectedProvider === 'groq' || selectedProvider === 'openrouter' || selectedProvider === 'deepseek' || selectedProvider === 'together') && (
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: 4 }}>
+                    Custom Base URL {selectedProvider === 'openai_compatible' ? '(Required)' : '(Optional Override)'}
+                  </label>
+                  <input
+                    type="text"
+                    className="input-field font-mono"
+                    placeholder={
+                      selectedProvider === 'groq' ? 'https://api.groq.com/openai/v1' :
+                      selectedProvider === 'openrouter' ? 'https://openrouter.ai/api/v1' :
+                      selectedProvider === 'deepseek' ? 'https://api.deepseek.com/v1' :
+                      selectedProvider === 'together' ? 'https://api.together.xyz/v1' :
+                      'https://your-custom-endpoint.com/v1'
+                    }
+                    value={baseUrl}
+                    onChange={(e) => setBaseUrl(e.target.value)}
                   />
                 </div>
               )}
@@ -307,7 +393,8 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, activeT
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </header>
   );

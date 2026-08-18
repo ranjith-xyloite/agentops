@@ -2,20 +2,25 @@
    AgentOps Design System - Modern Engineering Console Tokens
    ========================================================= */
 
-:root {
+:root,
+[data-theme="dark"] {
   /* Color Palette - Deep slate / Precision Engineering dark mode */
   --bg-primary: #0b0f19;
   --bg-secondary: #111827;
   --bg-tertiary: #1f2937;
   --bg-elevated: #162032;
   --bg-card: rgba(17, 24, 39, 0.85);
+  --bg-navbar: rgba(11, 15, 25, 0.9);
   --bg-terminal: #070a11;
+  --bg-panel-header: rgba(17, 24, 39, 0.6);
+  --bg-hover: rgba(255, 255, 255, 0.05);
 
   /* Accent Colors */
   --accent-blue: #3b82f6;
   --accent-blue-hover: #2563eb;
   --accent-blue-subtle: rgba(59, 130, 246, 0.12);
   --accent-cyan: #06b6d4;
+  --accent-purple: #a855f7;
   
   /* Status Colors */
   --status-success: #10b981;
@@ -53,10 +58,59 @@
   --radius-xl: 20px;
 
   /* Shadows */
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.35), 0 2px 4px -1px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.45), 0 4px 6px -2px rgba(0, 0, 0, 0.35);
   --shadow-glow: 0 0 20px rgba(59, 130, 246, 0.15);
+}
+
+[data-theme="light"] {
+  /* Color Palette - Clean, high-contrast daylight SaaS mode */
+  --bg-primary: #f4f6f9;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #edf2f7;
+  --bg-elevated: #ffffff;
+  --bg-card: #ffffff;
+  --bg-navbar: rgba(255, 255, 255, 0.92);
+  --bg-terminal: #0f172a;
+  --bg-panel-header: #f8fafc;
+  --bg-hover: rgba(0, 0, 0, 0.04);
+
+  /* Accent Colors */
+  --accent-blue: #2563eb;
+  --accent-blue-hover: #1d4ed8;
+  --accent-blue-subtle: rgba(37, 99, 235, 0.08);
+  --accent-cyan: #0891b2;
+  --accent-purple: #9333ea;
+  
+  /* Status Colors */
+  --status-success: #059669;
+  --status-success-bg: rgba(16, 185, 129, 0.12);
+  --status-warning: #d97706;
+  --status-warning-bg: rgba(245, 158, 11, 0.12);
+  --status-danger: #dc2626;
+  --status-danger-bg: rgba(239, 68, 68, 0.12);
+  --status-info: #0284c7;
+  --status-info-bg: rgba(56, 189, 248, 0.12);
+  --status-pending: #64748b;
+  --status-pending-bg: rgba(100, 116, 139, 0.12);
+
+  /* Text Colors */
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --text-inverse: #ffffff;
+
+  /* Borders & Dividers */
+  --border-subtle: rgba(0, 0, 0, 0.09);
+  --border-medium: rgba(0, 0, 0, 0.16);
+  --border-focus: #2563eb;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.06), 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 10px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 12px 24px -4px rgba(0, 0, 0, 0.09), 0 6px 12px -2px rgba(0, 0, 0, 0.05);
+  --shadow-glow: 0 0 20px rgba(37, 99, 235, 0.12);
 }
 
 /* =========================================================
@@ -79,6 +133,7 @@ html, body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 #root {
@@ -142,7 +197,7 @@ code, pre, .font-mono {
 
 .navbar {
   height: var(--header-height);
-  background: rgba(11, 15, 25, 0.9);
+  background: var(--bg-navbar);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border-subtle);
   display: flex;
@@ -152,6 +207,7 @@ code, pre, .font-mono {
   position: sticky;
   top: 0;
   z-index: 50;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
 .nav-brand {
@@ -203,6 +259,7 @@ code, pre, .font-mono {
   padding: 4px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-subtle);
+  overflow-x: auto;
 }
 
 .nav-tab-btn {
@@ -218,11 +275,12 @@ code, pre, .font-mono {
   align-items: center;
   gap: 8px;
   transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
 .nav-tab-btn:hover {
   color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--bg-hover);
 }
 
 .nav-tab-btn.active {
@@ -234,7 +292,7 @@ code, pre, .font-mono {
 .nav-status-group {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
 }
 
 .system-status-indicator {
@@ -260,6 +318,11 @@ code, pre, .font-mono {
   100% { opacity: 1; transform: scale(1); }
 }
 
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 /* =========================================================
    Dashboard Stats Cards
    ========================================================= */
@@ -278,12 +341,14 @@ code, pre, .font-mono {
   display: flex;
   align-items: center;
   gap: 16px;
-  transition: transform 0.15s ease, border-color 0.15s ease;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .stat-card:hover {
   transform: translateY(-2px);
   border-color: var(--border-medium);
+  box-shadow: var(--shadow-md);
 }
 
 .stat-icon-wrapper {
@@ -315,7 +380,7 @@ code, pre, .font-mono {
 }
 
 /* =========================================================
-   Console & Terminal Split View (Phase 3 Core)
+   Console & Terminal Split View
    ========================================================= */
 
 .console-workspace {
@@ -347,7 +412,7 @@ code, pre, .font-mono {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: rgba(17, 24, 39, 0.5);
+  background: var(--bg-panel-header);
 }
 
 .panel-title {
@@ -433,14 +498,14 @@ code, pre, .font-mono {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
-  background: var(--bg-terminal);
+  background: var(--bg-tertiary);
   padding: 4px 8px;
   border-radius: 4px;
   border: 1px solid var(--border-subtle);
 }
 
 .plan-params-box {
-  background: var(--bg-terminal);
+  background: var(--bg-tertiary);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   padding: 8px 12px;
@@ -497,41 +562,43 @@ code, pre, .font-mono {
   align-items: center;
 }
 
-.chat-input {
+.chat-input,
+.input-field {
   flex: 1;
-  background: var(--bg-terminal);
-  border: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-medium);
   border-radius: var(--radius-md);
   padding: 10px 14px;
   color: var(--text-primary);
   font-size: 13.5px;
   font-family: var(--font-sans);
   outline: none;
-  transition: border-color 0.15s ease;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
 }
 
-.chat-input:focus {
+.chat-input:focus,
+.input-field:focus {
   border-color: var(--accent-blue);
 }
 
 select.chat-input,
 select.input-field,
 select {
-  background-color: #111827 !important;
-  color: #f8fafc !important;
-  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  background-color: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border-medium) !important;
   cursor: pointer;
 }
 
 select option {
-  background-color: #111827 !important;
-  color: #f8fafc !important;
+  background-color: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
   padding: 8px 12px !important;
 }
 
 select option:checked {
-  background-color: #1f2937 !important;
-  color: #38bdf8 !important;
+  background-color: var(--bg-tertiary) !important;
+  color: var(--accent-blue) !important;
 }
 
 /* =========================================================
@@ -561,7 +628,7 @@ select option:checked {
 }
 
 .terminal-ts {
-  color: var(--text-muted);
+  color: #64748b;
   font-size: 11px;
   user-select: none;
   min-width: 65px;
@@ -577,7 +644,7 @@ select option:checked {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: var(--text-muted);
+  color: #64748b;
   gap: 12px;
   padding: 40px 0;
 }
@@ -611,10 +678,11 @@ select option:checked {
 .btn-secondary {
   background: var(--bg-tertiary);
   color: var(--text-primary);
-  border-color: var(--border-subtle);
+  border-color: var(--border-medium);
 }
 .btn-secondary:hover {
   background: var(--border-medium);
+  color: var(--text-primary);
 }
 
 .btn-danger {
@@ -665,7 +733,7 @@ select option:checked {
 
 .data-table th {
   padding: 12px 16px;
-  background: rgba(17, 24, 39, 0.7);
+  background: var(--bg-panel-header);
   font-size: 12px;
   font-weight: 600;
   color: var(--text-secondary);
@@ -682,7 +750,7 @@ select option:checked {
 }
 
 .data-table tr:hover td {
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--bg-hover);
 }
 
 /* =========================================================
@@ -703,6 +771,7 @@ select option:checked {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  box-shadow: var(--shadow-sm);
   transition: all 0.15s ease;
 }
 

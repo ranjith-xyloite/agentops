@@ -413,7 +413,7 @@ export async function getLLMStatusApi(): Promise<LLMProviderStatus> {
   return request(`${API_BASE}/system/llm`);
 }
 
-export async function setLLMProviderApi(data: { provider: string; model_name?: string; api_key?: string }): Promise<any> {
+export async function setLLMProviderApi(data: { provider: string; model_name?: string; api_key?: string; base_url?: string }): Promise<any> {
   return request(`${API_BASE}/system/llm`, {
     method: 'POST',
     body: JSON.stringify(data),

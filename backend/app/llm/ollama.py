@@ -79,13 +79,21 @@ class OllamaClient(LLMClient):
         if not matched_project:
             matched_project = "agentops"
 
+        greetings = ["hi", "hello", "hey", "hola", "howdy", "sup", "greetings", "good morning", "good afternoon", "good evening"]
+        is_greeting = msg.strip() in greetings or re.match(r'^(?:hi|hello|hey|greetings)\b', msg.strip())
+        default_question = (
+            "Hello! I am your AgentOps DevOps Assistant. Tell me what you would like to deploy, monitor, or inspect across your infrastructure."
+            if is_greeting else
+            "I didn't recognize a specific DevOps action for that request. Try asking: 'Deploy MOM frontend to UAT', 'Check server health', or 'Docker status'."
+        )
+
         out = {
             "tool": None,
             "parameters": {},
             "requires_confirmation": False,
-            "confidence": 0.8,
+            "confidence": 1.0 if is_greeting else 0.5,
             "missing_information": [],
-            "question": None
+            "question": default_question
         }
 
         # Multi-step Full Deployment Pipeline (DAG)
@@ -119,13 +127,28 @@ class OllamaClient(LLMClient):
                 ]
             )
 
-        # Extract target server if explicitly mentioned (e.g. "KC-server")
-        s_match = re.search(r'(?:server|node|host|on)\s+([a-zA-Z0-9_\-]+(?:-server|\.internal)?)', msg, re.I)
+        servers = (context or {}).get("servers", []) if isinstance(context, dict) else []
+
+        # Extract target server if explicitly or partially mentioned (e.g. "physical server", "KC-server")
         matched_server = None
-        if s_match:
-            candidate = s_match.group(1).strip()
-            if candidate.lower() not in ["uat", "qa", "dev", "prod", "production", "test"]:
-                matched_server = candidate
+        for s in servers:
+            if s.lower() in msg:
+                matched_server = s
+                break
+
+        if not matched_server:
+            for s in servers:
+                tokens = [t.lower() for t in re.split(r'[-_.\s]+', s) if len(t) > 2 and t.lower() not in ["server", "node", "host", "internal", "compute", "general"]]
+                if any(re.search(rf'\b{re.escape(token)}\b', msg) for token in tokens):
+                    matched_server = s
+                    break
+
+        if not matched_server:
+            s_match = re.search(r'(?:server|node|host|on)\s+([a-zA-Z0-9_\-]+(?:-server|\.internal)?)', msg, re.I)
+            if s_match:
+                candidate = s_match.group(1).strip()
+                if candidate.lower() not in ["uat", "qa", "dev", "prod", "production", "test", "servers", "health", "docker", "containers"]:
+                    matched_server = candidate
 
         if "deploy" in msg and "frontend" in msg:
             out.update({

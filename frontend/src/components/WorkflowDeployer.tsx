@@ -220,7 +220,7 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
               </label>
               <select
                 className="chat-input"
-                style={{ width: '100%', padding: '8px 12px', fontSize: '13px', background: '#111827', color: '#f8fafc' }}
+                style={{ width: '100%', padding: '8px 12px', fontSize: '13px' }}
                 value={selectedProjectId}
                 onChange={(e) => {
                   setSelectedProjectId(Number(e.target.value));
@@ -228,7 +228,7 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
                 }}
               >
                 {projects.map((p) => (
-                  <option key={p.id} value={p.id} style={{ background: '#111827', color: '#f8fafc' }}>
+                  <option key={p.id} value={p.id}>
                     {p.name}
                   </option>
                 ))}
@@ -245,7 +245,7 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
               </div>
               <select
                 className="chat-input"
-                style={{ width: '100%', padding: '8px 12px', fontSize: '13px', background: '#111827', color: '#f8fafc' }}
+                style={{ width: '100%', padding: '8px 12px', fontSize: '13px' }}
                 value={selectedEnvId}
                 onChange={(e) => {
                   setSelectedEnvId(Number(e.target.value));
@@ -255,7 +255,7 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
                 {environments.map((env) => {
                   const flowCount = (activeProject?.deployments || []).filter((d) => d.environment_id === env.id).length;
                   return (
-                    <option key={env.id} value={env.id} style={{ background: '#111827', color: '#f8fafc' }}>
+                    <option key={env.id} value={env.id}>
                       {env.name.toUpperCase()} {flowCount > 0 ? `(${flowCount} active ${flowCount === 1 ? 'flow' : 'flows'})` : ''}
                     </option>
                   );
@@ -603,13 +603,13 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
               <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Target Project *</label>
               <select
                 className="chat-input"
-                style={{ width: '100%', marginTop: 4, background: '#111827', color: '#f8fafc' }}
+                style={{ width: '100%', marginTop: 4 }}
                 value={modalProjectId}
                 onChange={(e) => setModalProjectId(Number(e.target.value))}
                 required
               >
                 {projects.map((p) => (
-                  <option key={p.id} value={p.id} style={{ background: '#111827', color: '#f8fafc' }}>
+                  <option key={p.id} value={p.id}>
                     {p.name}
                   </option>
                 ))}
@@ -620,13 +620,13 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
               <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Target Environment *</label>
               <select
                 className="chat-input"
-                style={{ width: '100%', marginTop: 4, background: '#111827', color: '#f8fafc' }}
+                style={{ width: '100%', marginTop: 4 }}
                 value={modalEnvId}
                 onChange={(e) => setModalEnvId(Number(e.target.value))}
                 required
               >
                 {environments.map((env) => (
-                  <option key={env.id} value={env.id} style={{ background: '#111827', color: '#f8fafc' }}>
+                  <option key={env.id} value={env.id}>
                     {env.name.toUpperCase()}
                   </option>
                 ))}
@@ -637,13 +637,13 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
               <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Target Fleet Server Node</label>
               <select
                 className="chat-input"
-                style={{ width: '100%', marginTop: 4, background: '#111827', color: '#f8fafc' }}
+                style={{ width: '100%', marginTop: 4 }}
                 value={modalServerId || ''}
                 onChange={(e) => setModalServerId(e.target.value ? Number(e.target.value) : undefined)}
               >
-                <option value="" style={{ background: '#111827', color: '#f8fafc' }}>Auto-resolve from fleet</option>
+                <option value="">Auto-resolve from fleet</option>
                 {servers.map((s) => (
-                  <option key={s.id} value={s.id} style={{ background: '#111827', color: '#f8fafc' }}>
+                  <option key={s.id} value={s.id}>
                     {s.name} ({s.hostname}:{s.port} - {s.username})
                   </option>
                 ))}
@@ -726,13 +726,13 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
               <FolderGit2 size={13} style={{ color: 'var(--accent-cyan)' }} />
               <select
                 className="chat-input"
-                style={{ padding: '4px 8px', fontSize: '12px', background: '#111827', color: '#f8fafc', minWidth: '150px' }}
+                style={{ padding: '4px 8px', fontSize: '12px', minWidth: '150px' }}
                 value={filterProjectId}
                 onChange={(e) => setFilterProjectId(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value))}
               >
-                <option value="ALL" style={{ background: '#111827', color: '#f8fafc' }}>All Projects ({projects.length})</option>
+                <option value="ALL">All Projects ({projects.length})</option>
                 {projects.map((p) => (
-                  <option key={p.id} value={p.id} style={{ background: '#111827', color: '#f8fafc' }}>
+                  <option key={p.id} value={p.id}>
                     {p.name}
                   </option>
                 ))}
@@ -744,13 +744,13 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
               <Activity size={13} style={{ color: 'var(--accent-blue)' }} />
               <select
                 className="chat-input"
-                style={{ padding: '4px 8px', fontSize: '12px', background: '#111827', color: '#f8fafc', minWidth: '140px' }}
+                style={{ padding: '4px 8px', fontSize: '12px', minWidth: '140px' }}
                 value={filterEnvId}
                 onChange={(e) => setFilterEnvId(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value))}
               >
-                <option value="ALL" style={{ background: '#111827', color: '#f8fafc' }}>All Environments</option>
+                <option value="ALL">All Environments</option>
                 {environments.map((env) => (
-                  <option key={env.id} value={env.id} style={{ background: '#111827', color: '#f8fafc' }}>
+                  <option key={env.id} value={env.id}>
                     {env.name.toUpperCase()}
                   </option>
                 ))}
@@ -1079,13 +1079,13 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
                                                 <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Target Environment *</label>
                                                 <select
                                                   className="chat-input"
-                                                  style={{ width: '100%', marginTop: 4, background: '#111827', color: '#f8fafc' }}
+                                                  style={{ width: '100%', marginTop: 4 }}
                                                   value={editFlowEnvId}
                                                   onChange={(e) => setEditFlowEnvId(Number(e.target.value))}
                                                   required
                                                 >
                                                   {environments.map((env) => (
-                                                    <option key={env.id} value={env.id} style={{ background: '#111827', color: '#f8fafc' }}>
+                                                    <option key={env.id} value={env.id}>
                                                       {env.name.toUpperCase()}
                                                     </option>
                                                   ))}
@@ -1096,13 +1096,13 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
                                                 <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Target Fleet Server Node</label>
                                                 <select
                                                   className="chat-input"
-                                                  style={{ width: '100%', marginTop: 4, background: '#111827', color: '#f8fafc' }}
+                                                  style={{ width: '100%', marginTop: 4 }}
                                                   value={editFlowServerId || ''}
                                                   onChange={(e) => setEditFlowServerId(e.target.value ? Number(e.target.value) : undefined)}
                                                 >
-                                                  <option value="" style={{ background: '#111827', color: '#f8fafc' }}>Auto-resolve from fleet</option>
+                                                  <option value="">Auto-resolve from fleet</option>
                                                   {servers.map((s) => (
-                                                    <option key={s.id} value={s.id} style={{ background: '#111827', color: '#f8fafc' }}>
+                                                    <option key={s.id} value={s.id}>
                                                       {s.name} ({s.hostname}:{s.port} - {s.username})
                                                     </option>
                                                   ))}

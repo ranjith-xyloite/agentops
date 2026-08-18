@@ -15,40 +15,90 @@ logger = logging.getLogger(__name__)
 class MultiLLMClient(LLMClient):
     """
     Unified Multi-Provider LLM Gateway.
-    Supports dynamic switching between Ollama, OpenAI, Anthropic, Gemini, and deterministic heuristics.
+    Supports dynamic switching between Ollama, Groq, OpenRouter, DeepSeek, Together AI,
+    custom OpenAI-compatible endpoints, OpenAI, Anthropic, Gemini, and deterministic heuristics.
     """
+    PROVIDER_BASE_URLS = {
+        "openai": "https://api.openai.com/v1",
+        "groq": "https://api.groq.com/openai/v1",
+        "openrouter": "https://openrouter.ai/api/v1",
+        "deepseek": "https://api.deepseek.com/v1",
+        "together": "https://api.together.xyz/v1",
+    }
+
+    DEFAULT_MODELS = {
+        "ollama": "qwen3",
+        "groq": "llama-3.3-70b-versatile",
+        "openrouter": "meta-llama/llama-3.3-70b-instruct",
+        "deepseek": "deepseek-chat",
+        "together": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+        "openai": "gpt-4o-mini",
+        "anthropic": "claude-3-5-sonnet-20241022",
+        "gemini": "gemini-1.5-flash",
+    }
+
     def __init__(self):
         self.provider = os.getenv("LLM_PROVIDER", "ollama").lower()
-        self.model = os.getenv("LLM_MODEL", os.getenv("OLLAMA_MODEL", "qwen3"))
+        self.model = os.getenv("LLM_MODEL", os.getenv("OLLAMA_MODEL", self.DEFAULT_MODELS.get(self.provider, "qwen3")))
         self.ollama_client = OllamaClient()
         self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
+        self.groq_api_key = os.getenv("GROQ_API_KEY", "")
+        self.openrouter_api_key = os.getenv("OPENROUTER_API_KEY", "")
+        self.deepseek_api_key = os.getenv("DEEPSEEK_API_KEY", "")
+        self.together_api_key = os.getenv("TOGETHER_API_KEY", "")
         self.anthropic_api_key = os.getenv("ANTHROPIC_API_KEY", "")
         self.gemini_api_key = os.getenv("GEMINI_API_KEY", "")
+        self.custom_api_key = os.getenv("LLM_API_KEY", "")
+        self.custom_base_url = os.getenv("LLM_BASE_URL", "")
 
-    def set_provider(self, provider: str, model: Optional[str] = None, api_key: Optional[str] = None):
+    def set_provider(self, provider: str, model: Optional[str] = None, api_key: Optional[str] = None, base_url: Optional[str] = None):
         self.provider = provider.lower()
         if model:
             self.model = model
+        elif not self.model or self.provider in self.DEFAULT_MODELS:
+            self.model = self.DEFAULT_MODELS.get(self.provider, self.model)
+
+        if base_url:
+            self.custom_base_url = base_url
+
         if api_key:
             if self.provider == "openai":
                 self.openai_api_key = api_key
+            elif self.provider == "groq":
+                self.groq_api_key = api_key
+            elif self.provider == "openrouter":
+                self.openrouter_api_key = api_key
+            elif self.provider == "deepseek":
+                self.deepseek_api_key = api_key
+            elif self.provider == "together":
+                self.together_api_key = api_key
             elif self.provider == "anthropic":
                 self.anthropic_api_key = api_key
             elif self.provider == "gemini":
                 self.gemini_api_key = api_key
+            else:
+                self.custom_api_key = api_key
 
     def get_status(self) -> Dict[str, Any]:
+        active_url = self.custom_base_url or self.PROVIDER_BASE_URLS.get(self.provider, "")
         return {
             "active_provider": self.provider,
             "active_model": self.model,
-            "available_providers": ["ollama", "openai", "anthropic", "gemini", "heuristic_fallback"]
+            "active_base_url": active_url,
+            "available_providers": [
+                "ollama", "groq", "openrouter", "deepseek", "together",
+                "openai_compatible", "openai", "anthropic", "gemini", "heuristic_fallback"
+            ]
         }
 
     async def parse(self, user_message: str, context: Dict[str, Any]) -> ToolRequest:
         """Route to active provider with graceful fallback chain."""
         try:
-            if self.provider == "openai" and self.openai_api_key:
-                return await self._parse_openai(user_message, context)
+            if self.provider in ("openai", "groq", "openrouter", "deepseek", "together", "openai_compatible"):
+                key = self._get_active_api_key()
+                if key or self.provider == "openai_compatible":
+                    base_url = self.custom_base_url or self.PROVIDER_BASE_URLS.get(self.provider, "https://api.openai.com/v1")
+                    return await self._parse_openai_compatible(base_url, key, self.model, user_message, context)
             elif self.provider == "anthropic" and self.anthropic_api_key:
                 return await self._parse_anthropic(user_message, context)
             elif self.provider == "gemini" and self.gemini_api_key:
@@ -61,15 +111,108 @@ class MultiLLMClient(LLMClient):
         # Fallback to deterministic heuristic parser
         return self._heuristic_parse(user_message, context)
 
-    async def _parse_openai(self, user_message: str, context: Dict[str, Any]) -> ToolRequest:
-        url = "https://api.openai.com/v1/chat/completions"
+    def _get_active_api_key(self) -> str:
+        if self.provider == "openai":
+            return self.openai_api_key
+        elif self.provider == "groq":
+            return self.groq_api_key or self.custom_api_key
+        elif self.provider == "openrouter":
+            return self.openrouter_api_key or self.custom_api_key
+        elif self.provider == "deepseek":
+            return self.deepseek_api_key or self.custom_api_key
+        elif self.provider == "together":
+            return self.together_api_key or self.custom_api_key
+        return self.custom_api_key or self.openai_api_key
+
+    def _build_system_prompt(self, context: Dict[str, Any]) -> str:
+        allowed_tools = context.get("allowed_tools", [
+            "deploy_frontend", "deploy_backend", "docker_status", "restart_container", "server_health_check"
+        ])
+        projects = context.get("projects", ["agentops", "ecommerce-app", "crm-system", "mom"])
+        environments = context.get("environments", ["dev", "qa", "uat", "production", "prod"])
+        servers = context.get("servers", [])
+
+        return f"""You are the strict AI DevOps Orchestrator for AgentOps.
+Always and only respond with a valid JSON object matching the ToolRequest schema:
+{{
+  "tool": "<tool_name or null>",
+  "parameters": {{ ... }},
+  "requires_confirmation": <true|false>,
+  "confidence": <float between 0.0 and 1.0>,
+  "missing_information": [],
+  "question": "<conversational greeting or clarification message when tool is null>",
+  "steps": null
+}}
+
+Guidelines:
+1. For greetings (e.g. "hi", "hello", "hey") or general questions, set "tool": null and provide a friendly greeting in "question".
+2. If the user asks for a DevOps operation, select from allowed_tools: {json.dumps(allowed_tools)}.
+3. Mutating operations (deploy_frontend, deploy_backend, restart_container) MUST have "requires_confirmation": true.
+4. Read-only operations (server_health_check, docker_status) MUST have "requires_confirmation": false.
+5. Known projects: {json.dumps(projects)}. Known environments: {json.dumps(environments)}.
+6. Known registered servers: {json.dumps(servers)}. When the user asks about a specific server (e.g. 'physical server', 'KC-server'), pass "server": "<matched_server_name>" in parameters.
+7. Respond with pure JSON only without markdown formatting."""
+
+    def _json_to_tool_request(self, data: Any) -> ToolRequest:
+        if isinstance(data, dict):
+            tool = data.get("tool")
+            if tool in ("null", "None", "", None):
+                tool = None
+            parameters = data.get("parameters") or {}
+            req_confirm = bool(data.get("requires_confirmation", False))
+            confidence = float(data.get("confidence", 0.9)) if data.get("confidence") is not None else 0.9
+            question = data.get("question") or data.get("message") or data.get("response") or data.get("reply")
+
+            steps = None
+            if "steps" in data and isinstance(data["steps"], list):
+                steps = []
+                for s in data["steps"]:
+                    if isinstance(s, dict):
+                        steps.append(WorkflowStep(**s))
+
+            return ToolRequest(
+                tool=tool,
+                parameters=parameters,
+                requires_confirmation=req_confirm,
+                confidence=confidence,
+                missing_information=data.get("missing_information", []),
+                question=question,
+                steps=steps
+            )
+        return ToolRequest(tool=None, question=str(data))
+
+    def _extract_json(self, raw_text: str) -> Any:
+        text = raw_text.strip()
+        # Strip markdown code blocks if present
+        if text.startswith("```"):
+            lines = text.splitlines()
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].startswith("```"):
+                lines = lines[:-1]
+            text = "\n".join(lines).strip()
+
+        try:
+            return json.loads(text)
+        except Exception:
+            m = re.search(r"\{.*\}", text, re.S)
+            if m:
+                return json.loads(m.group(0))
+            raise ValueError(f"Could not parse valid JSON from LLM output: {raw_text[:200]}")
+
+    async def _parse_openai_compatible(
+        self, base_url: str, api_key: str, model_name: str, user_message: str, context: Dict[str, Any]
+    ) -> ToolRequest:
+        url = f"{base_url.rstrip('/')}/chat/completions"
         headers = {
-            "Authorization": f"Bearer {self.openai_api_key}",
             "Content-Type": "application/json"
         }
-        system_prompt = self.ollama_client._build_system_prompt(context)
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+
+        system_prompt = self._build_system_prompt(context)
         payload = {
-            "model": self.model if "gpt" in self.model else "gpt-4o-mini",
+            "model": model_name or "gpt-4o-mini",
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
@@ -82,8 +225,8 @@ class MultiLLMClient(LLMClient):
             res.raise_for_status()
             data = res.json()
             raw_text = data["choices"][0]["message"]["content"]
-            parsed_json = json.loads(raw_text)
-            return self.ollama_client._json_to_tool_request(parsed_json)
+            parsed_json = self._extract_json(raw_text)
+            return self._json_to_tool_request(parsed_json)
 
     async def _parse_anthropic(self, user_message: str, context: Dict[str, Any]) -> ToolRequest:
         url = "https://api.anthropic.com/v1/messages"
@@ -92,7 +235,7 @@ class MultiLLMClient(LLMClient):
             "anthropic-version": "2023-06-01",
             "Content-Type": "application/json"
         }
-        system_prompt = self.ollama_client._build_system_prompt(context)
+        system_prompt = self._build_system_prompt(context)
         payload = {
             "model": self.model if "claude" in self.model else "claude-3-5-sonnet-20241022",
             "max_tokens": 1024,
@@ -105,31 +248,52 @@ class MultiLLMClient(LLMClient):
             res.raise_for_status()
             data = res.json()
             raw_text = data["content"][0]["text"]
-            parsed_json = json.loads(raw_text)
-            return self.ollama_client._json_to_tool_request(parsed_json)
+            parsed_json = self._extract_json(raw_text)
+            return self._json_to_tool_request(parsed_json)
 
     async def _parse_gemini(self, user_message: str, context: Dict[str, Any]) -> ToolRequest:
         model_name = self.model if "gemini" in self.model else "gemini-1.5-flash"
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={self.gemini_api_key}"
         headers = {"Content-Type": "application/json"}
-        system_prompt = self.ollama_client._build_system_prompt(context)
+        system_prompt = self._build_system_prompt(context)
         payload = {
             "systemInstruction": {"parts": [{"text": system_prompt}]},
-            "contents": [{"parts": [{"text": user_message}]}],
-            "generationConfig": {"responseMimeType": "application/json"}
+            "contents": [{"role": "user", "parts": [{"text": user_message}]}],
+            "generationConfig": {"responseMimeType": "application/json", "temperature": 0.1}
         }
         async with httpx.AsyncClient(timeout=15.0) as client:
             res = await client.post(url, headers=headers, json=payload)
             res.raise_for_status()
             data = res.json()
             raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
-            parsed_json = json.loads(raw_text)
-            return self.ollama_client._json_to_tool_request(parsed_json)
+            parsed_json = self._extract_json(raw_text)
+            return self._json_to_tool_request(parsed_json)
 
     def _heuristic_parse(self, msg: str, context: Dict[str, Any]) -> ToolRequest:
         """Deterministic NLP regex matcher supporting single tools and multi-step DAG workflows."""
-        m = msg.lower()
-        projects = context.get("projects", ["agentops", "ecommerce-app", "crm-system"])
+        m = msg.strip().lower()
+
+        # Conversational greetings & questions
+        greetings = ["hi", "hello", "hey", "hola", "howdy", "sup", "greetings", "good morning", "good afternoon", "good evening"]
+        if m in greetings or re.match(r'^(?:hi|hello|hey|greetings)\b', m):
+            return ToolRequest(
+                tool=None,
+                parameters={},
+                requires_confirmation=False,
+                confidence=1.0,
+                question="Hello! I am your AgentOps DevOps Assistant. Tell me what you would like to deploy, monitor, or inspect across your infrastructure."
+            )
+
+        if any(w in m for w in ["who are you", "what can you do", "help", "commands"]):
+            return ToolRequest(
+                tool=None,
+                parameters={},
+                requires_confirmation=False,
+                confidence=1.0,
+                question="I can help you orchestrate infrastructure and deployments: deploy frontend/backend services, execute multi-step CI/CD DAGs, check fleet server health, and inspect or restart Docker containers."
+            )
+
+        projects = context.get("projects", ["agentops", "ecommerce-app", "crm-system", "mom"])
         environments = context.get("environments", ["dev", "qa", "uat", "production", "prod"])
         servers = context.get("servers", [])
 
@@ -146,13 +310,27 @@ class MultiLLMClient(LLMClient):
         if matched_env == "prod":
             matched_env = "production"
 
-        matched_server = next((s for s in servers if s.lower() in m), None)
+        matched_server = None
+        # 1. Direct full name match
+        for s in servers:
+            if s.lower() in m:
+                matched_server = s
+                break
+
+        # 2. Token / keyword match (e.g. "physical" in "Xy-physical-server", "kc" in "KC-server")
         if not matched_server:
-            # Check for patterns like "on KC-server" or "server KC-server"
+            for s in servers:
+                tokens = [t.lower() for t in re.split(r'[-_.\s]+', s) if len(t) > 2 and t.lower() not in ["server", "node", "host", "internal", "compute", "general"]]
+                if any(re.search(rf'\b{re.escape(token)}\b', m) for token in tokens):
+                    matched_server = s
+                    break
+
+        # 3. Explicit prefix pattern match (e.g. "server KC-server")
+        if not matched_server:
             s_match = re.search(r'(?:server|node|host|on)\s+([a-zA-Z0-9_\-]+(?:-server|\.internal)?)', msg, re.I)
             if s_match:
                 candidate = s_match.group(1).strip()
-                if candidate.lower() not in ["uat", "qa", "dev", "prod", "production", "test"]:
+                if candidate.lower() not in ["uat", "qa", "dev", "prod", "production", "test", "servers", "health", "docker", "containers"]:
                     matched_server = candidate
 
         # Check for Multi-step Full Deployment Pipeline (DAG)
@@ -254,18 +432,15 @@ class MultiLLMClient(LLMClient):
                 confidence=0.90
             )
 
-        # Default fallback to server health check
-        fallback_params: Dict[str, Any] = {}
-        if matched_server:
-            fallback_params["server"] = matched_server
-        if matched_env:
-            fallback_params["environment"] = matched_env
+        # Non-matching input: Clarify rather than trigger accidental executions
         return ToolRequest(
-            tool="server_health_check",
-            parameters=fallback_params,
+            tool=None,
+            parameters={},
             requires_confirmation=False,
-            confidence=0.80
+            confidence=0.50,
+            question="I didn't recognize a specific DevOps action for that request. Try asking: 'Deploy MOM frontend to UAT', 'Check server health', or 'Docker status'."
         )
 
 
 multi_llm = MultiLLMClient()
+

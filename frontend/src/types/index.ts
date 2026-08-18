@@ -258,6 +258,7 @@ export interface PolicyRule {
 export interface LLMProviderStatus {
   active_provider: string;
   active_model: string;
+  active_base_url?: string;
   available_providers: string[];
 }
 

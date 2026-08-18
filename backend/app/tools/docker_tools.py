@@ -32,9 +32,25 @@ async def _resolve_target_servers(db_session, parameters: Dict[str, Any]) -> Lis
             pass
 
     if server_name:
-        stmt = select(Server).where(func.lower(Server.name) == str(server_name).lower().strip())
+        clean_name = str(server_name).strip()
+        # 1. Exact match
+        stmt = select(Server).where(func.lower(Server.name) == clean_name.lower())
         res = await db_session.execute(stmt)
         servers = res.scalars().all()
+        if servers:
+            return servers
+
+        # 2. Substring / contains match (e.g. "physical" matches "Xy-physical-server")
+        stmt_like = select(Server).where(Server.name.ilike(f"%{clean_name}%"))
+        res_like = await db_session.execute(stmt_like)
+        servers = res_like.scalars().all()
+        if servers:
+            return servers
+
+        # 3. Hostname / IP match
+        stmt_host = select(Server).where(Server.hostname.ilike(f"%{clean_name}%"))
+        res_host = await db_session.execute(stmt_host)
+        servers = res_host.scalars().all()
         if servers:
             return servers
 
