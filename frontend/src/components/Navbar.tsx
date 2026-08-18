@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Terminal, Server, FolderGit2, ListTodo, Users, Key, History,
-  LogOut, User as UserIcon, Shield, Activity, CalendarClock,
-  ShieldAlert, Sparkles, Cpu, X, Rocket, Layers
+  LogOut, User as UserIcon, Activity, CalendarClock,
+  ShieldAlert, Sparkles, Cpu, X, Rocket, Layers,
+  PanelLeftClose, PanelLeftOpen, ChevronRight
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { LLMProviderStatus } from '../types';
@@ -26,11 +27,20 @@ export type NavTab =
 
 interface NavbarProps {
   activeTab: NavTab;
-  setActiveTab: (tab: NavTab) => void;
+  setActiveTab?: (tab: NavTab) => void;
   activeTasksCount: number;
+  isCollapsed?: boolean;
+  setIsCollapsed?: (collapsed: boolean | ((prev: boolean) => boolean)) => void;
+  llmStatus?: LLMProviderStatus | null;
+  onRefreshLLM?: () => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, activeTasksCount }) => {
+export const Navbar: React.FC<NavbarProps> = ({
+  activeTab,
+  activeTasksCount,
+  isCollapsed = false,
+  setIsCollapsed,
+}) => {
   const { user, role, logout } = useAuth();
   const [llmStatus, setLlmStatus] = useState<LLMProviderStatus | null>(null);
   const [showLLMModal, setShowLLMModal] = useState(false);
@@ -61,7 +71,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, activeT
       if (res.active_base_url) {
         setBaseUrl(res.active_base_url);
       }
-    } catch (e) {
+    } catch {
       // ignore
     }
   };
@@ -99,132 +109,82 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, activeT
         return 'badge-warning';
       case 'operator':
         return 'badge-running';
-      case 'viewer':
+      default:
         return 'badge-pending';
     }
   };
 
+  const getTabDetails = (tab: NavTab) => {
+    switch (tab) {
+      case 'console':
+        return { label: 'AI Console', icon: <Terminal size={16} style={{ color: 'var(--accent-blue)' }} /> };
+      case 'deploy':
+        return { label: 'Deploy Hub', icon: <Rocket size={16} style={{ color: 'var(--status-success)' }} /> };
+      case 'tasks':
+        return { label: 'Live Tasks', icon: <ListTodo size={16} style={{ color: 'var(--accent-cyan)' }} /> };
+      case 'workflows':
+        return { label: 'Workflows', icon: <Layers size={16} style={{ color: 'var(--accent-purple)' }} /> };
+      case 'infrastructure':
+        return { label: 'Server Fleet', icon: <Server size={16} style={{ color: '#38bdf8' }} /> };
+      case 'projects':
+        return { label: 'Projects', icon: <FolderGit2 size={16} style={{ color: '#fbbf24' }} /> };
+      case 'schedules':
+        return { label: 'Schedules', icon: <CalendarClock size={16} style={{ color: '#f472b6' }} /> };
+      case 'policies-webhooks':
+        return { label: 'Policies & Webhooks', icon: <ShieldAlert size={16} style={{ color: 'var(--status-warning)' }} /> };
+      case 'observability':
+        return { label: 'Observability', icon: <Activity size={16} style={{ color: 'var(--status-info)' }} /> };
+      case 'users':
+        return { label: 'Users & Access', icon: <Users size={16} style={{ color: '#a78bfa' }} /> };
+      case 'api-keys':
+        return { label: 'API Keys', icon: <Key size={16} style={{ color: '#34d399' }} /> };
+      case 'audit-logs':
+        return { label: 'Audit Logs', icon: <History size={16} style={{ color: '#94a3b8' }} /> };
+    }
+  };
+
+  const currentTab = getTabDetails(activeTab);
+
   return (
-    <header className="navbar">
-      <div className="nav-brand">
-        <div className="brand-icon">
-          <Shield size={18} />
-        </div>
-        <div className="brand-title">
-          AgentOps <span className="brand-badge">Phase 6 Autonomous</span>
+    <header className="navbar" style={{ padding: '0 20px' }}>
+      {/* Left: Sidebar Toggle + Breadcrumb */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+        {setIsCollapsed && (
+          <button
+            type="button"
+            onClick={() => setIsCollapsed((prev) => !prev)}
+            className="btn btn-secondary btn-sm"
+            title={isCollapsed ? 'Open Left Sidebar (Ctrl+B)' : 'Collapse Left Sidebar (Ctrl+B)'}
+            style={{ padding: '6px 8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            {isCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+          </button>
+        )}
+
+        <div className="nav-breadcrumb" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
+          <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>AgentOps</span>
+          <ChevronRight size={13} style={{ color: 'var(--text-muted)' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: 'var(--text-primary)' }}>
+            {currentTab.icon}
+            <span>{currentTab.label}</span>
+          </div>
+
+          {activeTab === 'tasks' && activeTasksCount > 0 && (
+            <span className="badge badge-running" style={{ fontSize: '10px', marginLeft: 4 }}>
+              {activeTasksCount} Active
+            </span>
+          )}
         </div>
       </div>
 
-      <nav className="nav-tabs">
-        <button
-          className={`nav-tab-btn ${activeTab === 'console' ? 'active' : ''}`}
-          onClick={() => setActiveTab('console')}
-        >
-          <Terminal size={15} />
-          AI Console
-        </button>
+      {/* Right: Status, LLM Switcher, Theme Toggle, User Profile */}
+      <div className="nav-status-group" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        {/* Live System Indicator */}
+        <div className="system-status-indicator" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span className="status-dot"></span>
+          <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>System Online</span>
+        </div>
 
-        <button
-          className={`nav-tab-btn ${activeTab === 'deploy' ? 'active' : ''}`}
-          onClick={() => setActiveTab('deploy')}
-        >
-          <Rocket size={15} style={{ color: 'var(--status-success)' }} />
-          Deploy Hub
-        </button>
-
-        <button
-          className={`nav-tab-btn ${activeTab === 'tasks' ? 'active' : ''}`}
-          onClick={() => setActiveTab('tasks')}
-        >
-          <ListTodo size={15} />
-          Tasks
-          {activeTasksCount > 0 && (
-            <span className="badge badge-running" style={{ marginLeft: 4, padding: '1px 5px' }}>
-              {activeTasksCount}
-            </span>
-          )}
-        </button>
-
-        <button
-          className={`nav-tab-btn ${activeTab === 'workflows' ? 'active' : ''}`}
-          onClick={() => setActiveTab('workflows')}
-        >
-          <Layers size={15} style={{ color: 'var(--accent-purple)' }} />
-          Workflows
-        </button>
-
-        <button
-          className={`nav-tab-btn ${activeTab === 'infrastructure' ? 'active' : ''}`}
-          onClick={() => setActiveTab('infrastructure')}
-        >
-          <Server size={15} />
-          Fleet
-        </button>
-
-        <button
-          className={`nav-tab-btn ${activeTab === 'projects' ? 'active' : ''}`}
-          onClick={() => setActiveTab('projects')}
-        >
-          <FolderGit2 size={15} />
-          Projects
-        </button>
-
-        <button
-          className={`nav-tab-btn ${activeTab === 'schedules' ? 'active' : ''}`}
-          onClick={() => setActiveTab('schedules')}
-        >
-          <CalendarClock size={15} />
-          Schedules
-        </button>
-
-        <button
-          className={`nav-tab-btn ${activeTab === 'policies-webhooks' ? 'active' : ''}`}
-          onClick={() => setActiveTab('policies-webhooks')}
-        >
-          <ShieldAlert size={15} />
-          Policies & Webhooks
-        </button>
-
-        <button
-          className={`nav-tab-btn ${activeTab === 'observability' ? 'active' : ''}`}
-          onClick={() => setActiveTab('observability')}
-        >
-          <Activity size={15} />
-          Observability
-        </button>
-
-        {role === 'admin' && (
-          <button
-            className={`nav-tab-btn ${activeTab === 'users' ? 'active' : ''}`}
-            onClick={() => setActiveTab('users')}
-          >
-            <Users size={15} />
-            Users
-          </button>
-        )}
-
-        {(role === 'admin' || role === 'operator') && (
-          <button
-            className={`nav-tab-btn ${activeTab === 'api-keys' ? 'active' : ''}`}
-            onClick={() => setActiveTab('api-keys')}
-          >
-            <Key size={15} />
-            API Keys
-          </button>
-        )}
-
-        {(role === 'admin' || role === 'operator') && (
-          <button
-            className={`nav-tab-btn ${activeTab === 'audit-logs' ? 'active' : ''}`}
-            onClick={() => setActiveTab('audit-logs')}
-          >
-            <History size={15} />
-            Audit Logs
-          </button>
-        )}
-      </nav>
-
-      <div className="nav-status-group">
         {/* Multi-LLM Gateway Switcher Badge */}
         {llmStatus && (
           <button
@@ -306,7 +266,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, activeT
               maxHeight: '90vh',
               overflowY: 'auto',
               padding: '24px',
-              boxShadow: '0 25px 60px rgba(0, 0, 0, 0.7)',
+              boxShadow: 'var(--shadow-lg)',
               position: 'relative',
             }}
           >

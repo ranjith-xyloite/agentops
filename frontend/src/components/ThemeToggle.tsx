@@ -3,7 +3,7 @@ import { Sun, Moon, Monitor, ChevronDown, Check } from 'lucide-react';
 import { useTheme, ThemeMode } from '../context/ThemeContext';
 
 export const ThemeToggle: React.FC = () => {
-  const { theme, resolvedTheme, setTheme, toggleTheme } = useTheme();
+  const { theme, setTheme } = useTheme();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 

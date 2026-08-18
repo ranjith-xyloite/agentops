@@ -368,6 +368,12 @@ export async function toggleScheduleApi(id: number): Promise<{ status: string; i
   });
 }
 
+export async function runScheduleApi(id: number): Promise<{ status: string; schedule_id: number; user_request: string }> {
+  return request(`${API_BASE}/schedules/${id}/run`, {
+    method: 'POST',
+  });
+}
+
 export async function listWebhooksApi(): Promise<WebhookSubscription[]> {
   return request(`${API_BASE}/webhooks`);
 }

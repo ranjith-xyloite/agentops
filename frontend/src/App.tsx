@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Navbar, NavTab } from './components/Navbar';
+import { Sidebar } from './components/Sidebar';
 import { DashboardStats } from './components/DashboardStats';
 import { ChatConsole, ChatMessage } from './components/ChatConsole';
 import { TaskTerminal } from './components/TaskTerminal';
@@ -52,6 +53,33 @@ import {
 export const App: React.FC = () => {
   const { isAuthenticated, role } = useAuth();
   const [activeTab, setActiveTab] = useState<NavTab>('console');
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('agentops_sidebar_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('agentops_sidebar_collapsed', String(isCollapsed));
+    } catch {
+      // ignore
+    }
+  }, [isCollapsed]);
+
+  // Global Ctrl+B shortcut to toggle sidebar
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        setIsCollapsed((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Data state
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -297,129 +325,146 @@ export const App: React.FC = () => {
   const runningTasksCount = tasks.filter((t) => t.status === 'RUNNING').length;
 
   return (
-    <div className="app-container">
+    <div className="app-layout">
       <LoginModal />
 
-      <Navbar
+      <Sidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         activeTasksCount={runningTasksCount}
+        isCollapsed={isCollapsed}
+        setIsCollapsed={setIsCollapsed}
+        llmStatus={null}
+        onOpenLLMModal={() => {}}
       />
 
-      <main className="main-content">
-        <DashboardStats stats={stats} />
+      <div className="app-main-wrapper">
+        <Navbar
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          activeTasksCount={runningTasksCount}
+          isCollapsed={isCollapsed}
+          setIsCollapsed={setIsCollapsed}
+        />
 
-        {activeTab === 'console' && (
-          <div className="console-workspace">
-            <ChatConsole
-              messages={chatMessages}
-              onSendMessage={handleSendMessage}
+        <main className="main-content">
+          <DashboardStats stats={stats} />
+
+          {activeTab === 'console' && (
+            <div className="console-workspace">
+              <ChatConsole
+                messages={chatMessages}
+                onSendMessage={handleSendMessage}
+                onConfirmTask={handleConfirmTask}
+                onCancelTask={handleCancelTask}
+                onSelectTaskToStream={(id) => setActiveTaskId(id)}
+                isProcessing={isProcessing}
+              />
+
+              <TaskTerminal
+                activeTaskId={activeTaskId}
+                activeTask={activeTask}
+                logs={terminalLogs}
+                currentStatus={currentTaskStatus}
+                onConfirmTask={handleConfirmTask}
+                onCancelTask={handleCancelTask}
+                onClearLogs={() => setTerminalLogs([])}
+              />
+            </div>
+          )}
+
+          {activeTab === 'tasks' && (
+            <TaskList
+              tasks={tasks}
+              onSelectTask={(id) => {
+                setActiveTaskId(id);
+                setActiveTab('console');
+              }}
               onConfirmTask={handleConfirmTask}
               onCancelTask={handleCancelTask}
-              onSelectTaskToStream={(id) => setActiveTaskId(id)}
-              isProcessing={isProcessing}
             />
+          )}
 
-            <TaskTerminal
-              activeTaskId={activeTaskId}
-              activeTask={activeTask}
-              logs={terminalLogs}
-              currentStatus={currentTaskStatus}
-              onConfirmTask={handleConfirmTask}
-              onCancelTask={handleCancelTask}
-              onClearLogs={() => setTerminalLogs([])}
+          {activeTab === 'deploy' && (
+            <DeploymentHub
+              projects={projects}
+              environments={environments}
+              servers={servers}
+              tasks={tasks}
+              onTriggerDeploy={handleTriggerDeploy}
+              onSelectTaskToStream={(id) => {
+                setActiveTaskId(id);
+                setActiveTab('console');
+              }}
+              onNavigateToWorkflows={() => setActiveTab('workflows')}
             />
-          </div>
-        )}
+          )}
 
-        {activeTab === 'tasks' && (
-          <TaskList
-            tasks={tasks}
-            onSelectTask={(id) => {
-              setActiveTaskId(id);
-              setActiveTab('console');
-            }}
-            onConfirmTask={handleConfirmTask}
-            onCancelTask={handleCancelTask}
-          />
-        )}
+          {activeTab === 'workflows' && (
+            <WorkflowDeployer
+              projects={projects}
+              environments={environments}
+              servers={servers}
+              onTriggerDeploy={handleTriggerDeploy}
+              onAddDeployment={handleAddDeployment}
+              onUpdateDeployment={handleUpdateDeployment}
+              onDeleteDeployment={handleDeleteDeployment}
+            />
+          )}
 
-        {activeTab === 'deploy' && (
-          <DeploymentHub
-            projects={projects}
-            environments={environments}
-            servers={servers}
-            tasks={tasks}
-            onTriggerDeploy={handleTriggerDeploy}
-            onSelectTaskToStream={(id) => {
-              setActiveTaskId(id);
-              setActiveTab('console');
-            }}
-            onNavigateToWorkflows={() => setActiveTab('workflows')}
-          />
-        )}
+          {activeTab === 'infrastructure' && (
+            <ServerFleet
+              servers={servers}
+              environments={environments}
+              onAddServer={handleAddServer}
+              onUpdateServer={handleUpdateServer}
+              onDeleteServer={handleDeleteServer}
+            />
+          )}
 
-        {activeTab === 'workflows' && (
-          <WorkflowDeployer
-            projects={projects}
-            environments={environments}
-            servers={servers}
-            onTriggerDeploy={handleTriggerDeploy}
-            onAddDeployment={handleAddDeployment}
-            onUpdateDeployment={handleUpdateDeployment}
-            onDeleteDeployment={handleDeleteDeployment}
-          />
-        )}
+          {activeTab === 'projects' && (
+            <ProjectDeployments
+              projects={projects}
+              environments={environments}
+              servers={servers}
+              onTriggerDeploy={handleTriggerDeploy}
+              onAddProject={handleAddProject}
+              onDeleteProject={handleDeleteProject}
+              onUpdateProject={handleUpdateProject}
+              onAddDeployment={handleAddDeployment}
+              onUpdateDeployment={handleUpdateDeployment}
+              onDeleteDeployment={handleDeleteDeployment}
+            />
+          )}
 
-        {activeTab === 'infrastructure' && (
-          <ServerFleet
-            servers={servers}
-            environments={environments}
-            onAddServer={handleAddServer}
-            onUpdateServer={handleUpdateServer}
-            onDeleteServer={handleDeleteServer}
-          />
-        )}
+          {activeTab === 'schedules' && (
+            <SchedulerManager
+              projects={projects}
+              environments={environments}
+            />
+          )}
 
-        {activeTab === 'projects' && (
-          <ProjectDeployments
-            projects={projects}
-            environments={environments}
-            servers={servers}
-            onTriggerDeploy={handleTriggerDeploy}
-            onAddProject={handleAddProject}
-            onDeleteProject={handleDeleteProject}
-            onUpdateProject={handleUpdateProject}
-            onAddDeployment={handleAddDeployment}
-            onUpdateDeployment={handleUpdateDeployment}
-            onDeleteDeployment={handleDeleteDeployment}
-          />
-        )}
+          {activeTab === 'policies-webhooks' && (
+            <PoliciesAndWebhooks />
+          )}
 
-        {activeTab === 'schedules' && (
-          <SchedulerManager />
-        )}
+          {activeTab === 'observability' && (
+            <Observability />
+          )}
 
-        {activeTab === 'policies-webhooks' && (
-          <PoliciesAndWebhooks />
-        )}
+          {activeTab === 'users' && role === 'admin' && (
+            <UserManagement projects={projects} />
+          )}
 
-        {activeTab === 'observability' && (
-          <Observability />
-        )}
+          {activeTab === 'api-keys' && (
+            <ApiKeys />
+          )}
 
-        {activeTab === 'users' && role === 'admin' && (
-          <UserManagement projects={projects} />
-        )}
-
-        {activeTab === 'api-keys' && (
-          <ApiKeys />
-        )}
-
-        {activeTab === 'audit-logs' && (
-          <AuditLogs />
-        )}
-      </main>
+          {activeTab === 'audit-logs' && (
+            <AuditLogs />
+          )}
+        </main>
+      </div>
     </div>
   );
 };

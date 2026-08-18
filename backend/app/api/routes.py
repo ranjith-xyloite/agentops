@@ -1432,6 +1432,31 @@ async def toggle_schedule(
     return {"status": "updated", "is_active": st.is_active}
 
 
+@router.post("/schedules/{schedule_id}/run")
+async def run_schedule_now(
+    schedule_id: int,
+    request: Request,
+    current_user: User = Depends(require_role(UserRole.OPERATOR)),
+    session: AsyncSession = Depends(get_session)
+):
+    st = await session.get(ScheduledTask, schedule_id)
+    if not st:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+
+    st.last_run_at = datetime.now(timezone.utc)
+    await session.commit()
+
+    orch = Orchestrator()
+    asyncio.create_task(orch.handle_user_message(st.user_request, {"source": "manual_schedule_trigger", "schedule_id": st.id}))
+
+    await log_audit_event(
+        session, current_user, "run_schedule_now", "scheduled_task", str(schedule_id),
+        {"name": st.name, "request": st.user_request}, request.client.host if request.client else None
+    )
+    return {"status": "triggered", "schedule_id": schedule_id, "user_request": st.user_request}
+
+
+
 # =========================================================
 # Phase 6: Outbound Webhooks & Notifications APIs
 # =========================================================
