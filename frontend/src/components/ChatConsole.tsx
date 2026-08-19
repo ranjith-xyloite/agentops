@@ -80,7 +80,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
               {m.sender === 'agent' ? <Bot size={13} /> : <User size={13} />}
               <span style={{ fontSize: '11px', opacity: 0.8 }}>
-                {m.sender === 'agent' ? 'AgentOps' : 'You'} • {m.timestamp}
+                {m.sender === 'agent' ? 'XyOps' : 'You'} • {m.timestamp}
               </span>
             </div>
 

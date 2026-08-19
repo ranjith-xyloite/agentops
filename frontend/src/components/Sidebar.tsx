@@ -210,7 +210,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             cursor: 'pointer',
           }}
           onClick={() => setActiveTab('console')}
-          title="AgentOps Autonomous DevOps"
+          title="XyOps — Xyloite Technologies Autonomous DevOps"
         >
           <div
             className="brand-icon"
@@ -232,11 +232,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           {!isCollapsed && (
             <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              <div style={{ fontSize: '15px', fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-primary)', lineHeight: '1.2' }}>
-                AgentOps
+              <div style={{ fontSize: '16px', fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text-primary)', lineHeight: '1.2' }}>
+                XyOps
               </div>
-              <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--accent-blue)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Autonomous v6.0
+              <div style={{ fontSize: '9.5px', fontWeight: 600, color: 'var(--accent-blue)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Xyloite Technologies
               </div>
             </div>
           )}

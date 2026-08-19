@@ -93,7 +93,7 @@ export const App: React.FC = () => {
     {
       id: 'welcome',
       sender: 'agent',
-      text: 'Hello! I am your AgentOps DevOps Assistant. Tell me what you would like to deploy, monitor, or inspect across your infrastructure.',
+      text: 'Hello! I am your XyOps DevOps Assistant by Xyloite Technologies. Tell me what you would like to deploy, monitor, or inspect across your infrastructure.',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
@@ -279,7 +279,10 @@ export const App: React.FC = () => {
 
   const handleTriggerDeploy = async (projectName: string, component: string, env: string) => {
     setActiveTab('console');
-    await handleSendMessage(`Deploy ${projectName} ${component} branch main to ${env}`);
+    const planRes = await handleSendMessage(`Deploy ${projectName} ${component} to ${env}`);
+    if (planRes && planRes.task_id && (planRes.execution_plan?.tool || (planRes.execution_plan as any)?.steps)) {
+      await handleConfirmTask(planRes.task_id);
+    }
   };
 
   const handleAddProject = async (projectData: { name: string; description?: string; repository_url?: string }): Promise<Project> => {

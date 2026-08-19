@@ -150,37 +150,43 @@ class OllamaClient(LLMClient):
                 if candidate.lower() not in ["uat", "qa", "dev", "prod", "production", "test", "servers", "health", "docker", "containers"]:
                     matched_server = candidate
 
-        if "deploy" in msg and "frontend" in msg:
-            out.update({
-                "tool": "deploy_frontend",
-                "parameters": {"project": matched_project, "component": "frontend", "branch": "main", "environment": "uat"},
-                "requires_confirmation": True,
-                "confidence": 0.95
-            })
-            for token in ["qa", "dev", "main", "master", "staging", "release"]:
-                if token in msg:
-                    out["parameters"]["branch"] = token
-                    break
-            for env in ["uat", "production", "prod", "qa", "staging", "dev"]:
+        if "deploy" in msg:
+            b_match = re.search(r'branch\s+([a-zA-Z0-9_\-\./]+)', user_message, re.I)
+            matched_branch = b_match.group(1).strip() if b_match else "main"
+
+            comp = None
+            if "frontend" in msg:
+                comp = "frontend"
+            elif "backend" in msg or "api" in msg:
+                comp = "backend"
+            else:
+                pattern = r'deploy\s+(?:' + (re.escape(matched_project) + r'\s+' if matched_project else '') + r')([a-zA-Z0-9_\-]+)'
+                c_match = re.search(pattern, user_message, re.I)
+                if c_match:
+                    cand = c_match.group(1).strip()
+                    if cand.lower() not in ["branch", "to", "on", "in", "the", "a", "all", "project", "server", "uat", "qa", "dev", "develop", "prod", "production"]:
+                        comp = cand
+            if not comp:
+                comp = "backend"
+
+            matched_env = "uat"
+            for env in ["develop", "dev", "uat", "qa", "staging", "production", "prod"]:
                 if env in msg:
-                    out["parameters"]["environment"] = "uat" if env == "uat" else ("production" if env in ("production", "prod") else env)
+                    matched_env = "uat" if env == "uat" else ("production" if env in ("production", "prod") else env)
                     break
 
-        elif "deploy" in msg and "backend" in msg:
+            tool_to_use = "deploy_frontend" if comp.lower() == "frontend" else "deploy_backend"
             out.update({
-                "tool": "deploy_backend",
-                "parameters": {"project": matched_project, "component": "backend", "branch": "main", "environment": "uat"},
+                "tool": tool_to_use,
+                "parameters": {
+                    "project": matched_project,
+                    "component": comp,
+                    "branch": matched_branch,
+                    "environment": matched_env
+                },
                 "requires_confirmation": True,
-                "confidence": 0.95
+                "confidence": 0.98
             })
-            for token in ["qa", "dev", "main", "master", "staging", "release"]:
-                if token in msg:
-                    out["parameters"]["branch"] = token
-                    break
-            for env in ["uat", "production", "prod", "qa", "staging", "dev"]:
-                if env in msg:
-                    out["parameters"]["environment"] = "uat" if env == "uat" else ("production" if env in ("production", "prod") else env)
-                    break
 
         elif "docker" in msg and ("status" in msg or "container" in msg or "ps" in msg or "check" in msg):
             out.update({

@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { Users, UserPlus, Trash2, Check, X, Edit3 } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Users, UserPlus, Trash2, Check, X, Edit3, Search } from 'lucide-react';
 import { User, Project, UserRole } from '../types';
 import { listUsersApi, createUserApi, updateUserApi, deleteUserApi, assignUserProjectsApi } from '../services/api';
+import { PaginationControls } from './PaginationControls';
 
 interface UserManagementProps {
   projects: Project[];
@@ -9,8 +10,13 @@ interface UserManagementProps {
 
 export const UserManagement: React.FC<UserManagementProps> = ({ projects }) => {
   const [users, setUsers] = useState<User[]>([]);
+  const [searchTerm, setSearchTerm] = useState<string>('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
 
   // Add User State
   const [username, setUsername] = useState('');
@@ -42,6 +48,23 @@ export const UserManagement: React.FC<UserManagementProps> = ({ projects }) => {
   useEffect(() => {
     loadUsers();
   }, []);
+
+  const filteredUsers = useMemo(() => {
+    if (!searchTerm.trim()) return users;
+    const term = searchTerm.toLowerCase();
+    return users.filter(
+      (u) =>
+        u.username.toLowerCase().includes(term) ||
+        u.email.toLowerCase().includes(term) ||
+        u.role.toLowerCase().includes(term) ||
+        (u.assigned_projects && u.assigned_projects.some((p) => p.toLowerCase().includes(term)))
+    );
+  }, [users, searchTerm]);
+
+  const paginatedUsers = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredUsers.slice(start, start + pageSize);
+  }, [filteredUsers, currentPage, pageSize]);
 
   const startEditingUser = (u: User) => {
     setEditingUser(u);
@@ -126,17 +149,39 @@ export const UserManagement: React.FC<UserManagementProps> = ({ projects }) => {
   };
 
   return (
-    <div className="card-panel">
-      <div className="panel-header">
+    <div className="card-panel" style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+      <div className="panel-header" style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-subtle)' }}>
         <div className="panel-title">
           <Users size={18} style={{ color: 'var(--accent-blue)' }} />
-          <span>User Management & RBAC Governance</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span>User Management & RBAC Governance</span>
+            <span className="badge badge-primary" style={{ fontSize: '11px' }}>
+              {filteredUsers.length} Users
+            </span>
+          </div>
         </div>
 
-        <button className="btn btn-primary btn-sm" onClick={() => { setShowAddModal(!showAddModal); setEditingUser(null); setCreateProjectIds([]); }}>
-          <UserPlus size={14} />
-          Create User
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ position: 'relative' }}>
+            <input
+              type="text"
+              className="chat-input"
+              style={{ padding: '6px 12px 6px 30px', fontSize: '12px', width: '200px' }}
+              placeholder="Search user, email, role..."
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setCurrentPage(1);
+              }}
+            />
+            <Search size={13} style={{ position: 'absolute', left: 10, top: 9, color: 'var(--text-muted)' }} />
+          </div>
+
+          <button className="btn btn-primary btn-sm" onClick={() => { setShowAddModal(!showAddModal); setEditingUser(null); setCreateProjectIds([]); }}>
+            <UserPlus size={14} />
+            Create User
+          </button>
+        </div>
       </div>
 
       {/* Add User Modal */}
@@ -243,15 +288,9 @@ export const UserManagement: React.FC<UserManagementProps> = ({ projects }) => {
       {/* Edit User Modal */}
       {editingUser && (
         <form onSubmit={handleUpdateUser} style={{ padding: 20, background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-subtle)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-            <h4 style={{ fontSize: '13px', color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Edit3 size={15} /> Edit User: {editingUser.username} (#{editingUser.id})
-            </h4>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditingUser(null)}>
-              <X size={13} />
-            </button>
-          </div>
-
+          <h4 style={{ fontSize: '13px', color: 'var(--accent-blue)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Edit3 size={15} /> Edit User: {editingUser.username}
+          </h4>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
             <div>
               <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Email *</label>
@@ -345,123 +384,144 @@ export const UserManagement: React.FC<UserManagementProps> = ({ projects }) => {
         </form>
       )}
 
-      <div className="table-container">
+      <div className="table-container" style={{ margin: 0 }}>
         <table className="data-table">
           <thead>
             <tr>
-              <th>ID</th>
+              <th style={{ width: '80px' }}>ID</th>
               <th>Username & Email</th>
               <th>Role</th>
               <th>Status</th>
               <th>Assigned Projects (Multi-Tenancy)</th>
               <th>Created</th>
-              <th>Actions</th>
+              <th style={{ textAlign: 'right' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {users.map((u) => (
-              <tr key={u.id}>
-                <td className="font-mono" style={{ color: 'var(--accent-blue)', fontWeight: 600 }}>
-                  #{u.id}
-                </td>
-                <td>
-                  <div style={{ fontWeight: 600 }}>{u.username}</div>
-                  <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{u.email}</div>
-                </td>
-                <td>{getRoleBadge(u.role)}</td>
-                <td>
-                  {u.is_active !== false ? (
-                    <span className="badge badge-success">ACTIVE</span>
-                  ) : (
-                    <span className="badge badge-danger">DISABLED</span>
-                  )}
-                </td>
-                <td>
-                  {u.role === 'admin' ? (
-                    <span style={{ fontSize: '12px', color: 'var(--status-warning)' }}>
-                      All Projects (Global Admin)
-                    </span>
-                  ) : editingProjectsUserId === u.id ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                        {projects.map((p) => {
-                          const isChecked = selectedProjectIds.includes(p.id);
-                          return (
-                            <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '12px', cursor: 'pointer', background: 'var(--bg-tertiary)', padding: '2px 6px', borderRadius: 4 }}>
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setSelectedProjectIds((prev) => [...prev, p.id]);
-                                  } else {
-                                    setSelectedProjectIds((prev) => prev.filter((id) => id !== p.id));
-                                  }
-                                }}
-                              />
-                              {p.name}
-                            </label>
-                          );
-                        })}
-                      </div>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button className="btn btn-primary btn-sm" onClick={() => handleSaveProjects(u.id)}>
-                          <Check size={12} /> Save
-                        </button>
-                        <button className="btn btn-secondary btn-sm" onClick={() => setEditingProjectsUserId(null)}>
-                          <X size={12} /> Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                        {u.assigned_projects && u.assigned_projects.length > 0
-                          ? u.assigned_projects.join(', ')
-                          : 'No projects assigned'}
-                      </span>
-                      <button
-                        className="btn btn-secondary btn-sm"
-                        style={{ padding: '2px 6px', fontSize: '10px' }}
-                        onClick={() => {
-                          setEditingProjectsUserId(u.id);
-                          const currentIds = projects.filter((p) => u.assigned_projects?.includes(p.name)).map((p) => p.id);
-                          setSelectedProjectIds(currentIds);
-                        }}
-                      >
-                        Projects
-                      </button>
-                    </div>
-                  )}
-                </td>
-                <td style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                  {u.created_at ? new Date(u.created_at).toLocaleDateString() : 'Active'}
-                </td>
-                <td>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <button
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => startEditingUser(u)}
-                      title="Edit User Profile"
-                    >
-                      <Edit3 size={12} />
-                      Edit
-                    </button>
-                    <button
-                      className="btn btn-danger btn-sm"
-                      onClick={() => handleDeleteUser(u.id)}
-                      title="Delete User"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
+            {paginatedUsers.length === 0 ? (
+              <tr>
+                <td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '36px' }}>
+                  <Users size={28} style={{ opacity: 0.4, margin: '0 auto 8px', display: 'block' }} />
+                  <div>No users found matching the search criteria.</div>
                 </td>
               </tr>
-            ))}
+            ) : (
+              paginatedUsers.map((u) => (
+                <tr key={u.id}>
+                  <td className="font-mono" style={{ color: 'var(--accent-blue)', fontWeight: 600 }}>
+                    #{u.id}
+                  </td>
+                  <td>
+                    <div style={{ fontWeight: 600 }}>{u.username}</div>
+                    <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{u.email}</div>
+                  </td>
+                  <td>{getRoleBadge(u.role)}</td>
+                  <td>
+                    {u.is_active !== false ? (
+                      <span className="badge badge-success">ACTIVE</span>
+                    ) : (
+                      <span className="badge badge-danger">DISABLED</span>
+                    )}
+                  </td>
+                  <td>
+                    {u.role === 'admin' ? (
+                      <span style={{ fontSize: '12px', color: 'var(--status-warning)' }}>
+                        All Projects (Global Admin)
+                      </span>
+                    ) : editingProjectsUserId === u.id ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                          {projects.map((p) => {
+                            const isChecked = selectedProjectIds.includes(p.id);
+                            return (
+                              <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '12px', cursor: 'pointer', background: 'var(--bg-tertiary)', padding: '2px 6px', borderRadius: 4 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedProjectIds((prev) => [...prev, p.id]);
+                                    } else {
+                                      setSelectedProjectIds((prev) => prev.filter((id) => id !== p.id));
+                                    }
+                                  }}
+                                />
+                                {p.name}
+                              </label>
+                            );
+                          })}
+                        </div>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button className="btn btn-primary btn-sm" onClick={() => handleSaveProjects(u.id)}>
+                            <Check size={12} /> Save
+                          </button>
+                          <button className="btn btn-secondary btn-sm" onClick={() => setEditingProjectsUserId(null)}>
+                            <X size={12} /> Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                          {u.assigned_projects && u.assigned_projects.length > 0
+                            ? u.assigned_projects.join(', ')
+                            : 'No projects assigned'}
+                        </span>
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          style={{ padding: '2px 6px', fontSize: '10px' }}
+                          onClick={() => {
+                            setEditingProjectsUserId(u.id);
+                            const currentIds = projects.filter((p) => u.assigned_projects?.includes(p.name)).map((p) => p.id);
+                            setSelectedProjectIds(currentIds);
+                          }}
+                        >
+                          Projects
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                  <td style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    {u.created_at ? new Date(u.created_at).toLocaleDateString() : 'Active'}
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    <div style={{ display: 'inline-flex', gap: 6 }}>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => startEditingUser(u)}
+                        title="Edit User Profile"
+                      >
+                        <Edit3 size={12} />
+                        Edit
+                      </button>
+                      <button
+                        className="btn btn-danger btn-sm"
+                        onClick={() => handleDeleteUser(u.id)}
+                        title="Delete User"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
+
+      {/* Pagination Footer */}
+      <PaginationControls
+        currentPage={currentPage}
+        totalItems={filteredUsers.length}
+        pageSize={pageSize}
+        onPageChange={setCurrentPage}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setCurrentPage(1);
+        }}
+        itemLabel="users"
+      />
     </div>
   );
 };
-

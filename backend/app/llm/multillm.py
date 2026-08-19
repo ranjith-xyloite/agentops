@@ -369,22 +369,37 @@ Guidelines:
                 ]
             )
 
-        # Single Deploy Frontend
-        if "deploy" in m and "frontend" in m:
-            return ToolRequest(
-                tool="deploy_frontend",
-                parameters={"project": matched_project, "environment": matched_env or "uat", "component": "frontend"},
-                requires_confirmation=True,
-                confidence=0.95
-            )
+        # Dynamic Deploy Handler (supports frontend, backend, or custom components like WD-Node, DRF-FE, etc.)
+        if "deploy" in m:
+            b_match = re.search(r'branch\s+([a-zA-Z0-9_\-\./]+)', msg, re.I)
+            matched_branch = b_match.group(1).strip() if b_match else "main"
 
-        # Single Deploy Backend
-        if "deploy" in m and ("backend" in m or "api" in m):
+            comp = None
+            if "frontend" in m:
+                comp = "frontend"
+            elif "backend" in m or "api" in m:
+                comp = "backend"
+            else:
+                pattern = r'deploy\s+(?:' + (re.escape(matched_project) + r'\s+' if matched_project else '') + r')([a-zA-Z0-9_\-]+)'
+                c_match = re.search(pattern, msg, re.I)
+                if c_match:
+                    cand = c_match.group(1).strip()
+                    if cand.lower() not in ["branch", "to", "on", "in", "the", "a", "all", "project", "server", "uat", "qa", "dev", "develop", "prod", "production"]:
+                        comp = cand
+            if not comp:
+                comp = "backend"
+
+            tool_to_use = "deploy_frontend" if comp.lower() == "frontend" else "deploy_backend"
             return ToolRequest(
-                tool="deploy_backend",
-                parameters={"project": matched_project, "environment": matched_env or "uat", "component": "backend"},
+                tool=tool_to_use,
+                parameters={
+                    "project": matched_project,
+                    "environment": matched_env or "uat",
+                    "component": comp,
+                    "branch": matched_branch
+                },
                 requires_confirmation=True,
-                confidence=0.95
+                confidence=0.98
             )
 
         # Docker Status

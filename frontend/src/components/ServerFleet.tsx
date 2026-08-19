@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { Server as ServerIcon, Plus, Trash2, Activity, Key, Lock, Eye, EyeOff, CheckCircle2, AlertCircle, RefreshCw, Edit3, X } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Server as ServerIcon, Plus, Trash2, Activity, Key, Lock, Eye, EyeOff, CheckCircle2, AlertCircle, RefreshCw, Edit3, X, Search } from 'lucide-react';
 import { Server, ServerTestResult, ServerHealthAuditResult } from '../types';
 import { testServerConnectionApi, testExistingServerConnectionApi, auditServerHealthApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { PaginationControls } from './PaginationControls';
 
 interface ServerFleetProps {
   servers: Server[];
@@ -21,8 +22,13 @@ export const ServerFleet: React.FC<ServerFleetProps> = ({
   const { role } = useAuth();
   const isAdmin = role === 'admin';
 
+  const [searchTerm, setSearchTerm] = useState<string>('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingServer, setEditingServer] = useState<Server | null>(null);
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
 
   // Add Form State
   const [name, setName] = useState('');
@@ -56,6 +62,24 @@ export const ServerFleet: React.FC<ServerFleetProps> = ({
   const [auditingServer, setAuditingServer] = useState<Server | null>(null);
   const [isAuditing, setIsAuditing] = useState(false);
   const [auditResult, setAuditResult] = useState<ServerHealthAuditResult | null>(null);
+
+  const filteredServers = useMemo(() => {
+    if (!searchTerm.trim()) return servers;
+    const term = searchTerm.toLowerCase();
+    return servers.filter(
+      (s) =>
+        s.name.toLowerCase().includes(term) ||
+        s.hostname.toLowerCase().includes(term) ||
+        s.username.toLowerCase().includes(term) ||
+        (s.environment_name && s.environment_name.toLowerCase().includes(term)) ||
+        String(s.port).includes(term)
+    );
+  }, [servers, searchTerm]);
+
+  const paginatedServers = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredServers.slice(start, start + pageSize);
+  }, [filteredServers, currentPage, pageSize]);
 
   const handleOpenAuditModal = async (server: Server) => {
     setAuditingServer(server);
@@ -185,19 +209,41 @@ export const ServerFleet: React.FC<ServerFleetProps> = ({
   };
 
   return (
-    <div className="card-panel">
-      <div className="panel-header">
+    <div className="card-panel" style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+      <div className="panel-header" style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-subtle)' }}>
         <div className="panel-title">
           <ServerIcon size={18} style={{ color: '#3b82f6' }} />
-          <span>Server Fleet & Node Infrastructure</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span>Server Fleet & Node Infrastructure</span>
+            <span className="badge badge-primary" style={{ fontSize: '11px' }}>
+              {filteredServers.length} Nodes
+            </span>
+          </div>
         </div>
 
-        {isAdmin && (
-          <button className="btn btn-primary btn-sm" onClick={() => { setShowAddModal(!showAddModal); setEditingServer(null); }}>
-            <Plus size={14} />
-            Add Node
-          </button>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ position: 'relative' }}>
+            <input
+              type="text"
+              className="chat-input"
+              style={{ padding: '6px 12px 6px 30px', fontSize: '12px', width: '200px' }}
+              placeholder="Search host, name, IP..."
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setCurrentPage(1);
+              }}
+            />
+            <Search size={13} style={{ position: 'absolute', left: 10, top: 9, color: 'var(--text-muted)' }} />
+          </div>
+
+          {isAdmin && (
+            <button className="btn btn-primary btn-sm" onClick={() => { setShowAddModal(!showAddModal); setEditingServer(null); }}>
+              <Plus size={14} />
+              Add Node
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Add Server Modal */}
@@ -521,119 +567,142 @@ export const ServerFleet: React.FC<ServerFleetProps> = ({
 
       {/* Server Grid */}
       <div style={{ padding: 20 }}>
-        <div className="server-grid">
-          {servers.map((s) => {
-            const testRes = serverTestResults[s.id];
-            const isTesting = testingServerId === s.id;
+        {paginatedServers.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
+            <ServerIcon size={32} style={{ opacity: 0.4, margin: '0 auto 8px', display: 'block' }} />
+            <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>No Servers Found</p>
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+              {searchTerm ? 'No nodes match your search query.' : 'Add your first server node to manage infrastructure.'}
+            </p>
+          </div>
+        ) : (
+          <div className="server-grid">
+            {paginatedServers.map((s) => {
+              const testRes = serverTestResults[s.id];
+              const isTesting = testingServerId === s.id;
 
-            return (
-              <div key={s.id} className="server-card">
-                <div className="server-card-header">
-                  <div className="server-title">{s.name}</div>
-                  <span className="badge badge-primary" style={{ fontSize: '10px' }}>
-                    FLEET NODE
-                  </span>
-                </div>
+              return (
+                <div key={s.id} className="server-card">
+                  <div className="server-card-header">
+                    <div className="server-title">{s.name}</div>
+                    <span className="badge badge-primary" style={{ fontSize: '10px' }}>
+                      FLEET NODE
+                    </span>
+                  </div>
 
-                <div className="server-details">
-                  <div className="server-metric-row">
-                    <span>Host:</span>
-                    <strong style={{ color: 'var(--text-primary)' }}>{s.hostname}</strong>
+                  <div className="server-details">
+                    <div className="server-metric-row">
+                      <span>Host:</span>
+                      <strong style={{ color: 'var(--text-primary)' }}>{s.hostname}</strong>
+                    </div>
+                    <div className="server-metric-row">
+                      <span>Port:</span>
+                      <span>{s.port}</span>
+                    </div>
+                    <div className="server-metric-row">
+                      <span>User:</span>
+                      <span>{s.username}</span>
+                    </div>
+                    <div className="server-metric-row">
+                      <span>Auth:</span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        {s.authentication_method === 'password' ? (
+                          <>
+                            <Lock size={12} style={{ color: 'var(--accent-cyan)' }} /> Password
+                          </>
+                        ) : (
+                          <>
+                            <Key size={12} style={{ color: 'var(--accent-blue)' }} /> SSH Key
+                          </>
+                        )}
+                      </span>
+                    </div>
                   </div>
-                  <div className="server-metric-row">
-                    <span>Port:</span>
-                    <span>{s.port}</span>
-                  </div>
-                  <div className="server-metric-row">
-                    <span>User:</span>
-                    <span>{s.username}</span>
-                  </div>
-                  <div className="server-metric-row">
-                    <span>Auth:</span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      {s.authentication_method === 'password' ? (
-                        <>
-                          <Lock size={12} style={{ color: 'var(--accent-cyan)' }} /> Password
-                        </>
+
+                  {testRes && (
+                    <div style={{
+                      margin: '8px 0',
+                      padding: '6px 8px',
+                      borderRadius: 'var(--radius-sm)',
+                      fontSize: '11px',
+                      background: testRes.success ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                      border: `1px solid ${testRes.success ? 'var(--status-success)' : 'var(--status-error)'}`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6
+                    }}>
+                      {testRes.success ? (
+                        <CheckCircle2 size={13} style={{ color: 'var(--status-success)' }} />
                       ) : (
-                        <>
-                          <Key size={12} style={{ color: 'var(--accent-blue)' }} /> SSH Key
-                        </>
+                        <AlertCircle size={13} style={{ color: 'var(--status-error)' }} />
                       )}
-                    </span>
-                  </div>
-                </div>
+                      <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {testRes.message}
+                      </span>
+                      {testRes.latency_ms !== undefined && (
+                        <span style={{ color: 'var(--text-secondary)' }}>{testRes.latency_ms}ms</span>
+                      )}
+                    </div>
+                  )}
 
-                {testRes && (
-                  <div style={{
-                    margin: '8px 0',
-                    padding: '6px 8px',
-                    borderRadius: 'var(--radius-sm)',
-                    fontSize: '11px',
-                    background: testRes.success ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                    border: `1px solid ${testRes.success ? 'var(--status-success)' : 'var(--status-error)'}`,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6
-                  }}>
-                    {testRes.success ? (
-                      <CheckCircle2 size={13} style={{ color: 'var(--status-success)' }} />
-                    ) : (
-                      <AlertCircle size={13} style={{ color: 'var(--status-error)' }} />
-                    )}
-                    <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {testRes.message}
-                    </span>
-                    {testRes.latency_ms !== undefined && (
-                      <span style={{ color: 'var(--text-secondary)' }}>{testRes.latency_ms}ms</span>
-                    )}
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => handleTestExistingServer(s.id)}
-                    disabled={isTesting}
-                    title="Test SSH handshake"
-                  >
-                    {isTesting ? <RefreshCw size={12} className="spin" /> : <Activity size={12} />}
-                    Test SSH
-                  </button>
-                  {isAdmin && (
+                  <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
                     <button
                       className="btn btn-secondary btn-sm"
-                      onClick={() => startEditingServer(s)}
-                      title="Edit Node Configuration"
+                      onClick={() => handleTestExistingServer(s.id)}
+                      disabled={isTesting}
+                      title="Test SSH handshake"
                     >
-                      <Edit3 size={12} />
-                      Edit
+                      {isTesting ? <RefreshCw size={12} className="spin" /> : <Activity size={12} />}
+                      Test SSH
                     </button>
-                  )}
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    style={{ flex: 1, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                    onClick={() => handleOpenAuditModal(s)}
-                    title={`Run real-time health audit on ${s.name}`}
-                  >
-                    <Activity size={12} style={{ color: 'var(--accent-cyan)' }} />
-                    Health Audit
-                  </button>
-                  {isAdmin && (
+                    {isAdmin && (
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => startEditingServer(s)}
+                        title="Edit Node Configuration"
+                      >
+                        <Edit3 size={12} />
+                        Edit
+                      </button>
+                    )}
                     <button
-                      className="btn btn-danger btn-sm"
-                      onClick={() => onDeleteServer(s.id)}
-                      title="Remove Node"
+                      className="btn btn-secondary btn-sm"
+                      style={{ flex: 1, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                      onClick={() => handleOpenAuditModal(s)}
+                      title={`Run real-time health audit on ${s.name}`}
                     >
-                      <Trash2 size={13} />
+                      <Activity size={12} style={{ color: 'var(--accent-cyan)' }} />
+                      Health Audit
                     </button>
-                  )}
+                    {isAdmin && (
+                      <button
+                        className="btn btn-danger btn-sm"
+                        onClick={() => onDeleteServer(s.id)}
+                        title="Remove Node"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
+
+      {/* Pagination Footer */}
+      <PaginationControls
+        currentPage={currentPage}
+        totalItems={filteredServers.length}
+        pageSize={pageSize}
+        onPageChange={setCurrentPage}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setCurrentPage(1);
+        }}
+        itemLabel="server nodes"
+      />
 
       {/* Dedicated Single Server Live Health Audit Window / Modal */}
       {auditingServer && (

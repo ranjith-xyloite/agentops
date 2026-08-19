@@ -162,7 +162,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         )}
 
         <div className="nav-breadcrumb" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
-          <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>AgentOps</span>
+          <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>XyOps</span>
           <ChevronRight size={13} style={{ color: 'var(--text-muted)' }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: 'var(--text-primary)' }}>
             {currentTab.icon}

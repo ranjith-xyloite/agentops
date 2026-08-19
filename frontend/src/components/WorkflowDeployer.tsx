@@ -49,7 +49,7 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
   const [selectedProjectId, setSelectedProjectId] = useState<number>(projects[0]?.id || 1);
   const [selectedEnvId, setSelectedEnvId] = useState<number>(environments[0]?.id || 1);
   const [selectedComponent, setSelectedComponent] = useState<string>('frontend');
-  const [targetBranch, setTargetBranch] = useState<string>('main');
+  const [targetBranch, setTargetBranch] = useState<string>('');
 
   // Workflow Overview Filter State
   const [filterProjectId, setFilterProjectId] = useState<number | 'ALL'>('ALL');
@@ -81,16 +81,16 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
   const activeProject = projects.find((p) => p.id === Number(selectedProjectId)) || projects[0];
   const activeEnvironment = environments.find((e) => e.id === Number(selectedEnvId)) || environments[0];
 
-  // Resolve matching deployment flow for project + environment
+  // Resolve matching deployment flows for project + environment
   const matchingDeployments = (activeProject?.deployments || []).filter(
     (d) => d.environment_id === activeEnvironment?.id
   );
-  const activeDeployment = matchingDeployments.find((d) => d.component === selectedComponent) || matchingDeployments[0];
+  const activeDeployment = matchingDeployments.find((d) => d.component === selectedComponent) || (matchingDeployments.length > 0 ? matchingDeployments[0] : null);
 
-  // Resolve matching server node for the active deployment flow (explicit server_id, or environment match, or any fleet server)
-  const mappedServer = (activeDeployment?.server_id ? servers.find((s) => s.id === activeDeployment.server_id) : null)
-    || servers.find((s) => s.environment_id === activeEnvironment?.id)
-    || servers[0];
+  // Resolve matching server node for the active deployment flow (explicit server_id, or environment match, or null)
+  const mappedServer = activeDeployment?.server_id
+    ? (servers.find((s) => s.id === activeDeployment.server_id) || null)
+    : (activeDeployment && activeEnvironment ? (servers.find((s) => s.environment_id === activeEnvironment.id) || null) : null);
 
   // Automatically update component selection if available flows change
   useEffect(() => {
@@ -99,7 +99,7 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
         setSelectedComponent(matchingDeployments[0].component);
       }
     }
-  }, [selectedProjectId, selectedEnvId]);
+  }, [selectedProjectId, selectedEnvId, matchingDeployments]);
 
   const handleRunPreflight = async () => {
     if (!activeProject || !activeEnvironment) return;
@@ -386,11 +386,11 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
               )}
             </div>
 
-            {/* Step 4: Branch */}
+            {/* Step 4: Branch (Optional) */}
             <div>
               <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
                 <Code size={14} style={{ color: 'var(--status-success)' }} />
-                4. Git Branch
+                4. Git Branch (Optional)
               </label>
               <input
                 type="text"
@@ -398,7 +398,7 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
                 style={{ width: '100%', padding: '8px 12px', fontSize: '13px' }}
                 value={targetBranch}
                 onChange={(e) => setTargetBranch(e.target.value)}
-                placeholder="main"
+                placeholder="Optional (managed by script)"
               />
             </div>
           </div>
@@ -406,126 +406,165 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
 
         {/* Dynamic Target Server & Workflow Resolution Card */}
         <div style={{ padding: 24 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16 }}>
-            {/* Resolved Server Node Card */}
+          {matchingDeployments.length === 0 || !activeDeployment ? (
             <div style={{
+              padding: '32px 24px',
+              textAlign: 'center',
               background: 'var(--bg-primary)',
-              border: '1px solid var(--border-subtle)',
+              border: '1px dashed var(--border-subtle)',
               borderRadius: 'var(--radius-md)',
-              padding: 16
+              color: 'var(--text-secondary)'
             }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>Mapped Server Node</span>
-                <span className="badge badge-success" style={{ fontSize: '10.5px' }}>
-                  {activeEnvironment?.name?.toUpperCase() || 'NODE'}
-                </span>
-              </div>
-
-              {mappedServer ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: '12.5px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>Node Name:</span>
-                    <strong style={{ color: 'var(--text-primary)' }}>{mappedServer.name}</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>Host IP:</span>
-                    <span className="font-mono">{mappedServer.hostname}:{mappedServer.port}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>SSH User:</span>
-                    <span className="font-mono">{mappedServer.username}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>Auth Mode:</span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--accent-cyan)' }}>
-                      <ShieldCheck size={13} /> {mappedServer.authentication_method === 'password' ? 'Password Auth' : 'SSH Key'}
-                    </span>
-                  </div>
-                </div>
-              ) : (
-                <div style={{ padding: 12, borderRadius: 'var(--radius-sm)', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--status-error)', fontSize: '12px' }}>
-                  <AlertCircle size={14} style={{ display: 'inline', marginRight: 4 }} />
-                  No server node is currently assigned. Add a compute node in the <strong>Fleet</strong> tab.
-                </div>
-              )}
-            </div>
-
-            {/* Resolved Execution Pipeline Parameters */}
-            <div style={{
-              background: 'var(--bg-primary)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-md)',
-              padding: 16,
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between'
-            }}>
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>Execution Flow Specs</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span className="badge badge-primary" style={{ fontSize: '10.5px' }}>
-                      {activeDeployment?.component || selectedComponent}
-                    </span>
-                    {isAdmin && activeDeployment && (
-                      <button
-                        className="btn btn-secondary btn-sm"
-                        style={{ padding: '2px 6px', fontSize: '11px' }}
-                        onClick={() => startEditingFlow(activeDeployment)}
-                        title="Edit Location & Script"
-                      >
-                        <Edit3 size={11} /> Edit
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: '12.5px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>Remote Path:</span>
-                    <span className="font-mono">{activeDeployment?.repository_path || `/opt/${activeProject?.name || 'app'}/${selectedComponent}`}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>Deploy Script:</span>
-                    <span className="font-mono" style={{ color: 'var(--accent-cyan)' }}>{activeDeployment?.deployment_script || './deploy.sh'}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>Health Probe:</span>
-                    <span style={{ color: activeDeployment?.health_check_url ? 'var(--status-success)' : 'var(--text-muted)' }}>
-                      {activeDeployment?.health_check_url ? activeDeployment.health_check_url : 'None configured'}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>Target Git Ref:</span>
-                    <span className="font-mono">origin/{targetBranch}</span>
-                  </div>
-                </div>
-              </div>
-
+              <AlertCircle size={32} style={{ color: 'var(--status-warning)', margin: '0 auto 10px', display: 'block' }} />
+              <h4 style={{ fontSize: '15px', color: 'var(--text-primary)', margin: '0 0 6px' }}>
+                No Deployment Flow Configured for {activeProject?.name} on {activeEnvironment?.name?.toUpperCase()}
+              </h4>
+              <p style={{ fontSize: '12px', color: 'var(--text-muted)', maxWidth: '480px', margin: '0 auto 16px' }}>
+                No component services (e.g. frontend, backend) have been mapped to the <strong>{activeEnvironment?.name?.toUpperCase()}</strong> environment for project <strong>{activeProject?.name}</strong> yet.
+              </p>
               {isAdmin && (
-                <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    style={{ fontSize: '11.5px', padding: '4px 10px' }}
-                    onClick={() => {
-                      setModalProjectId(activeProject?.id || 1);
-                      setModalEnvId(activeEnvironment?.id || 1);
-                      setModalServerId(servers[0]?.id);
-                      const hasFe = matchingDeployments.some(d => d.component.toLowerCase() === 'frontend');
-                      const nextComp = hasFe ? 'backend' : 'frontend';
-                      setModalComponent(nextComp);
-                      setModalRepoPath(`/opt/${activeProject?.name || 'app'}/${nextComp}`);
-                      setModalScript('./deploy.sh');
-                      setShowAddFlowModal(true);
-                    }}
-                  >
-                    <Plus size={12} /> Add Component (e.g. Backend)
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => {
+                    setModalProjectId(activeProject?.id || 1);
+                    setModalEnvId(activeEnvironment?.id || 1);
+                    setModalServerId(servers[0]?.id);
+                    setModalComponent('frontend');
+                    setModalRepoPath('');
+                    setModalScript('./deploy.sh');
+                    setModalHealthUrl('');
+                    setShowAddFlowModal(true);
+                  }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, margin: '0 auto' }}
+                >
+                  <Plus size={13} /> Configure Flow for {activeEnvironment?.name?.toUpperCase()}
+                </button>
               )}
             </div>
-          </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16 }}>
+              {/* Resolved Server Node Card */}
+              <div style={{
+                background: 'var(--bg-primary)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 'var(--radius-md)',
+                padding: 16
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>Mapped Server Node</span>
+                  <span className={`badge ${mappedServer ? 'badge-success' : 'badge-warning'}`} style={{ fontSize: '10.5px' }}>
+                    {mappedServer ? activeEnvironment?.name?.toUpperCase() : 'NO NODE MAPPED'}
+                  </span>
+                </div>
+
+                {mappedServer ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: '12.5px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Node Name:</span>
+                      <strong style={{ color: 'var(--text-primary)' }}>{mappedServer.name}</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Host IP:</span>
+                      <span className="font-mono">{mappedServer.hostname}:{mappedServer.port}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>SSH User:</span>
+                      <span className="font-mono">{mappedServer.username}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Auth Mode:</span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--accent-cyan)' }}>
+                        <ShieldCheck size={13} /> {mappedServer.authentication_method === 'password' ? 'Password Auth' : 'SSH Key'}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ padding: 12, borderRadius: 'var(--radius-sm)', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--status-error)', fontSize: '12px' }}>
+                    <AlertCircle size={14} style={{ display: 'inline', marginRight: 4 }} />
+                    No server node is mapped to this flow. Click <strong>Edit</strong> on the flow specs to assign a fleet node.
+                  </div>
+                )}
+              </div>
+
+              {/* Resolved Execution Pipeline Parameters */}
+              <div style={{
+                background: 'var(--bg-primary)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 'var(--radius-md)',
+                padding: 16,
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between'
+              }}>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>Execution Flow Specs</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span className="badge badge-primary" style={{ fontSize: '10.5px' }}>
+                        {activeDeployment.component}
+                      </span>
+                      {isAdmin && (
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          style={{ padding: '2px 6px', fontSize: '11px' }}
+                          onClick={() => startEditingFlow(activeDeployment)}
+                          title="Edit Location & Script"
+                        >
+                          <Edit3 size={11} /> Edit
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: '12.5px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Remote Path:</span>
+                      <span className="font-mono">{activeDeployment.repository_path || 'None configured'}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Deploy Script:</span>
+                      <span className="font-mono" style={{ color: 'var(--accent-cyan)' }}>{activeDeployment.deployment_script || 'None configured'}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Health Probe:</span>
+                      <span style={{ color: activeDeployment.health_check_url ? 'var(--status-success)' : 'var(--text-muted)' }}>
+                        {activeDeployment.health_check_url || 'None configured'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Target Git Ref:</span>
+                      <span className="font-mono">{targetBranch ? `origin/${targetBranch}` : 'Default (Managed by Script)'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {isAdmin && (
+                  <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ fontSize: '11.5px', padding: '4px 10px' }}
+                      onClick={() => {
+                        setModalProjectId(activeProject?.id || 1);
+                        setModalEnvId(activeEnvironment?.id || 1);
+                        setModalServerId(servers[0]?.id);
+                        const hasFe = matchingDeployments.some(d => d.component.toLowerCase() === 'frontend');
+                        const nextComp = hasFe ? 'backend' : 'frontend';
+                        setModalComponent(nextComp);
+                        setModalRepoPath('');
+                        setModalScript('./deploy.sh');
+                        setModalHealthUrl('');
+                        setShowAddFlowModal(true);
+                      }}
+                    >
+                      <Plus size={12} /> Add Component (e.g. Backend)
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Pre-flight Result Inspector */}
           {preflightResult && (
@@ -558,7 +597,8 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
                   className="btn btn-secondary"
                   style={{ padding: '10px 18px', fontSize: '13px' }}
                   onClick={handleRunPreflight}
-                  disabled={isChecking || !mappedServer}
+                  disabled={isChecking || !activeDeployment || !mappedServer}
+                  title={!activeDeployment ? 'Configure a deployment flow for this environment first' : !mappedServer ? 'Assign a server node to this flow first' : 'Run connectivity & path check'}
                 >
                   {isChecking ? <RefreshCw size={15} className="spin" /> : <Activity size={15} />}
                   Run Pre-flight Audit
@@ -569,7 +609,8 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
                   className="btn btn-primary"
                   style={{ padding: '10px 22px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: 8 }}
                   onClick={handleExecuteDeploy}
-                  disabled={!mappedServer}
+                  disabled={!activeDeployment || !mappedServer}
+                  title={!activeDeployment ? 'Configure a deployment flow for this environment first' : !mappedServer ? 'Assign a server node to this flow first' : `Trigger deployment to ${activeEnvironment?.name?.toUpperCase()}`}
                 >
                   <Play size={15} />
                   Deploy to {activeEnvironment?.name?.toUpperCase()} Now
@@ -584,131 +625,164 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
         </div>
       </div>
 
-      {/* Add Flow Modal */}
+      {/* Add Flow Floating Modal Overlay */}
       {isAdmin && showAddFlowModal && (
-        <form onSubmit={handleCreateFlow} style={{ padding: 20, background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <h4 style={{ fontSize: '13px', color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Settings2 size={15} /> Configure Component Deployment Flow
-            </h4>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowAddFlowModal(false)}>
-              <X size={13} />
-            </button>
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(7, 10, 17, 0.85)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: 16
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowAddFlowModal(false);
+          }}
+        >
+          <div
+            style={{
+              background: 'var(--bg-secondary)',
+              border: '1px solid var(--border-medium)',
+              borderRadius: 'var(--radius-lg)',
+              width: '100%',
+              maxWidth: '620px',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              padding: '24px 28px',
+              boxShadow: 'var(--shadow-lg)'
+            }}
+          >
+            <form onSubmit={handleCreateFlow}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <h4 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Settings2 size={16} style={{ color: 'var(--accent-cyan)' }} /> Configure Component Deployment Flow
+                </h4>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowAddFlowModal(false)}>
+                  <X size={14} />
+                </button>
+              </div>
+              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 18 }}>
+                Specify the target environment, assigned fleet server node, remote path, and deployment script for this pipeline.
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
+                <div>
+                  <label style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-secondary)' }}>Target Project *</label>
+                  <select
+                    className="chat-input"
+                    style={{ width: '100%', marginTop: 4, padding: '8px 12px' }}
+                    value={modalProjectId}
+                    onChange={(e) => setModalProjectId(Number(e.target.value))}
+                    required
+                  >
+                    {projects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-secondary)' }}>Target Environment *</label>
+                  <select
+                    className="chat-input"
+                    style={{ width: '100%', marginTop: 4, padding: '8px 12px' }}
+                    value={modalEnvId}
+                    onChange={(e) => setModalEnvId(Number(e.target.value))}
+                    required
+                  >
+                    {environments.map((env) => (
+                      <option key={env.id} value={env.id}>
+                        {env.name.toUpperCase()}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ gridColumn: 'span 2' }}>
+                  <label style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-secondary)' }}>Target Fleet Server Node</label>
+                  <select
+                    className="chat-input"
+                    style={{ width: '100%', marginTop: 4, padding: '8px 12px' }}
+                    value={modalServerId || ''}
+                    onChange={(e) => setModalServerId(e.target.value ? Number(e.target.value) : undefined)}
+                  >
+                    <option value="">Auto-resolve from fleet</option>
+                    {servers.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({s.hostname}:{s.port} - {s.username})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-secondary)' }}>Component Name *</label>
+                  <input
+                    type="text"
+                    className="chat-input"
+                    style={{ width: '100%', marginTop: 4, padding: '8px 12px' }}
+                    placeholder="e.g. frontend, backend, app"
+                    value={modalComponent}
+                    onChange={(e) => setModalComponent(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-secondary)' }}>Remote Server Path (Location) *</label>
+                  <input
+                    type="text"
+                    className="chat-input font-mono"
+                    style={{ width: '100%', marginTop: 4, padding: '8px 12px' }}
+                    placeholder="e.g. /home/xyloite/app"
+                    value={modalRepoPath}
+                    onChange={(e) => setModalRepoPath(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div style={{ gridColumn: 'span 2' }}>
+                  <label style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-secondary)' }}>Deployment Script / Command *</label>
+                  <input
+                    type="text"
+                    className="chat-input font-mono"
+                    style={{ width: '100%', marginTop: 4, padding: '8px 12px' }}
+                    placeholder="e.g. ./deploy.sh or ./wd-node-deploy.sh"
+                    value={modalScript}
+                    onChange={(e) => setModalScript(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div style={{ gridColumn: 'span 2' }}>
+                  <label style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-secondary)' }}>Health Check URL (Optional)</label>
+                  <input
+                    type="text"
+                    className="chat-input"
+                    style={{ width: '100%', marginTop: 4, padding: '8px 12px' }}
+                    placeholder="e.g. http://localhost:3000/api/health"
+                    value={modalHealthUrl}
+                    onChange={(e) => setModalHealthUrl(e.target.value)}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, gridColumn: 'span 2', marginTop: 8 }}>
+                  <button type="submit" className="btn btn-primary" style={{ flex: 1, padding: '10px 16px' }}>
+                    Save Deployment Flow
+                  </button>
+                  <button type="button" className="btn btn-secondary" style={{ padding: '10px 16px' }} onClick={() => setShowAddFlowModal(false)}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </form>
           </div>
-          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 14 }}>
-            Specify the target environment, assigned fleet server node, remote path, and deployment script / command.
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
-            <div>
-              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Target Project *</label>
-              <select
-                className="chat-input"
-                style={{ width: '100%', marginTop: 4 }}
-                value={modalProjectId}
-                onChange={(e) => setModalProjectId(Number(e.target.value))}
-                required
-              >
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Target Environment *</label>
-              <select
-                className="chat-input"
-                style={{ width: '100%', marginTop: 4 }}
-                value={modalEnvId}
-                onChange={(e) => setModalEnvId(Number(e.target.value))}
-                required
-              >
-                {environments.map((env) => (
-                  <option key={env.id} value={env.id}>
-                    {env.name.toUpperCase()}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Target Fleet Server Node</label>
-              <select
-                className="chat-input"
-                style={{ width: '100%', marginTop: 4 }}
-                value={modalServerId || ''}
-                onChange={(e) => setModalServerId(e.target.value ? Number(e.target.value) : undefined)}
-              >
-                <option value="">Auto-resolve from fleet</option>
-                {servers.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} ({s.hostname}:{s.port} - {s.username})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Component Name *</label>
-              <input
-                type="text"
-                className="chat-input"
-                style={{ width: '100%', marginTop: 4 }}
-                placeholder="e.g. frontend, backend, app"
-                value={modalComponent}
-                onChange={(e) => setModalComponent(e.target.value)}
-                required
-              />
-            </div>
-
-            <div>
-              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Remote Server Path (Location) *</label>
-              <input
-                type="text"
-                className="chat-input font-mono"
-                style={{ width: '100%', marginTop: 4 }}
-                placeholder="e.g. /home/xyloite/app"
-                value={modalRepoPath}
-                onChange={(e) => setModalRepoPath(e.target.value)}
-              />
-            </div>
-
-            <div>
-              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Deployment Script / Command *</label>
-              <input
-                type="text"
-                className="chat-input font-mono"
-                style={{ width: '100%', marginTop: 4 }}
-                placeholder="e.g. ./deploy.sh"
-                value={modalScript}
-                onChange={(e) => setModalScript(e.target.value)}
-              />
-            </div>
-
-            <div style={{ gridColumn: 'span 2' }}>
-              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Health Check URL (Optional)</label>
-              <input
-                type="text"
-                className="chat-input"
-                style={{ width: '100%', marginTop: 4 }}
-                placeholder="e.g. http://localhost:3000/api/health"
-                value={modalHealthUrl}
-                onChange={(e) => setModalHealthUrl(e.target.value)}
-              />
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, gridColumn: 'span 2' }}>
-              <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>
-                Save Deployment Flow
-              </button>
-              <button type="button" className="btn btn-secondary" onClick={() => setShowAddFlowModal(false)}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        </form>
+        </div>
       )}
 
 

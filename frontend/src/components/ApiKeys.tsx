@@ -1,15 +1,21 @@
-import React, { useState, useEffect } from 'react';
-import { Key, Plus, Trash2, Copy, Check, ShieldCheck } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Key, Plus, Trash2, Copy, Check, ShieldCheck, Search } from 'lucide-react';
 import { APIKey } from '../types';
 import { listApiKeysApi, createApiKeyApi, revokeApiKeyApi } from '../services/api';
+import { PaginationControls } from './PaginationControls';
 
 export const ApiKeys: React.FC = () => {
   const [keys, setKeys] = useState<APIKey[]>([]);
+  const [searchTerm, setSearchTerm] = useState<string>('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [keyName, setKeyName] = useState('');
   const [expiresInDays, setExpiresInDays] = useState<number | undefined>(30);
   const [newlyCreatedKey, setNewlyCreatedKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
 
   const loadKeys = async () => {
     try {
@@ -23,6 +29,22 @@ export const ApiKeys: React.FC = () => {
   useEffect(() => {
     loadKeys();
   }, []);
+
+  const filteredKeys = useMemo(() => {
+    if (!searchTerm.trim()) return keys;
+    const term = searchTerm.toLowerCase();
+    return keys.filter(
+      (k) =>
+        k.name.toLowerCase().includes(term) ||
+        k.key_prefix.toLowerCase().includes(term) ||
+        String(k.id).includes(term)
+    );
+  }, [keys, searchTerm]);
+
+  const paginatedKeys = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredKeys.slice(start, start + pageSize);
+  }, [filteredKeys, currentPage, pageSize]);
 
   const handleCreateKey = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,17 +80,39 @@ export const ApiKeys: React.FC = () => {
   };
 
   return (
-    <div className="card-panel">
-      <div className="panel-header">
+    <div className="card-panel" style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+      <div className="panel-header" style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-subtle)' }}>
         <div className="panel-title">
           <Key size={18} style={{ color: 'var(--accent-cyan)' }} />
-          <span>API Keys (CI/CD Automation)</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span>API Keys (CI/CD Automation)</span>
+            <span className="badge badge-primary" style={{ fontSize: '11px' }}>
+              {filteredKeys.length} Keys
+            </span>
+          </div>
         </div>
 
-        <button className="btn btn-primary btn-sm" onClick={() => setShowCreateModal(true)}>
-          <Plus size={14} />
-          Generate New API Key
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ position: 'relative' }}>
+            <input
+              type="text"
+              className="chat-input"
+              style={{ padding: '6px 12px 6px 30px', fontSize: '12px', width: '180px' }}
+              placeholder="Search key name..."
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setCurrentPage(1);
+              }}
+            />
+            <Search size={13} style={{ position: 'absolute', left: 10, top: 9, color: 'var(--text-muted)' }} />
+          </div>
+
+          <button className="btn btn-primary btn-sm" onClick={() => setShowCreateModal(true)}>
+            <Plus size={14} />
+            Generate Key
+          </button>
+        </div>
       </div>
 
       {newlyCreatedKey && (
@@ -103,8 +147,8 @@ export const ApiKeys: React.FC = () => {
       )}
 
       {showCreateModal && (
-        <form onSubmit={handleCreateKey} style={{ padding: 20, background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-subtle)', display: 'flex', gap: 12, alignItems: 'flex-end' }}>
-          <div style={{ flex: 2 }}>
+        <form onSubmit={handleCreateKey} style={{ padding: 20, background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-subtle)', display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div style={{ flex: 2, minWidth: '200px' }}>
             <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Key Name / Pipeline Identifier</label>
             <input
               type="text"
@@ -117,7 +161,7 @@ export const ApiKeys: React.FC = () => {
             />
           </div>
 
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, minWidth: '140px' }}>
             <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Expiration (Days)</label>
             <select
               className="chat-input"
@@ -137,28 +181,29 @@ export const ApiKeys: React.FC = () => {
         </form>
       )}
 
-      <div className="table-container">
+      <div className="table-container" style={{ margin: 0 }}>
         <table className="data-table">
           <thead>
             <tr>
-              <th>ID</th>
+              <th style={{ width: '80px' }}>ID</th>
               <th>Name</th>
               <th>Key Prefix</th>
               <th>Status</th>
               <th>Expires</th>
               <th>Last Used</th>
-              <th>Actions</th>
+              <th style={{ textAlign: 'right' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {keys.length === 0 ? (
+            {paginatedKeys.length === 0 ? (
               <tr>
-                <td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px' }}>
-                  No active API keys found. Generate one to automate DevOps commands via curl or GitHub Actions.
+                <td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '36px' }}>
+                  <Key size={28} style={{ opacity: 0.4, margin: '0 auto 8px', display: 'block' }} />
+                  <div>No active API keys found matching the filter.</div>
                 </td>
               </tr>
             ) : (
-              keys.map((k) => (
+              paginatedKeys.map((k) => (
                 <tr key={k.id}>
                   <td className="font-mono" style={{ color: 'var(--accent-blue)', fontWeight: 600 }}>
                     #{k.id}
@@ -182,11 +227,12 @@ export const ApiKeys: React.FC = () => {
                   <td style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
                     {k.last_used_at ? new Date(k.last_used_at).toLocaleString() : 'Never used'}
                   </td>
-                  <td>
+                  <td style={{ textAlign: 'right' }}>
                     <button
                       className="btn btn-danger btn-sm"
                       onClick={() => handleRevokeKey(k.id)}
                       title="Revoke Key"
+                      style={{ padding: '4px 8px' }}
                     >
                       <Trash2 size={13} />
                     </button>
@@ -197,6 +243,19 @@ export const ApiKeys: React.FC = () => {
           </tbody>
         </table>
       </div>
+
+      {/* Pagination Footer */}
+      <PaginationControls
+        currentPage={currentPage}
+        totalItems={filteredKeys.length}
+        pageSize={pageSize}
+        onPageChange={setCurrentPage}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setCurrentPage(1);
+        }}
+        itemLabel="API keys"
+      />
     </div>
   );
 };

@@ -1,6 +1,7 @@
 """
 Docker and backend management tools for AgentOps.
 """
+import os
 import asyncio
 import json
 from datetime import datetime, timezone

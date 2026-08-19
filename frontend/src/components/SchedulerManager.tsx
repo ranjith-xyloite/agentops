@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   CalendarClock, Plus, Trash2, Power, Clock,
   RefreshCw, CheckCircle2, AlertCircle, Play,
   FolderGit2, Activity, GitBranch, Layers, Rocket,
-  Sparkles, X
+  Sparkles, X, Search
 } from 'lucide-react';
 import { ScheduledTask, Project, Environment } from '../types';
 import {
@@ -15,6 +15,7 @@ import {
   listProjects,
   listEnvironments
 } from '../services/api';
+import { PaginationControls } from './PaginationControls';
 
 interface SchedulerManagerProps {
   projects?: Project[];
@@ -26,10 +27,15 @@ export const SchedulerManager: React.FC<SchedulerManagerProps> = ({
   environments: propEnvironments,
 }) => {
   const [schedules, setSchedules] = useState<ScheduledTask[]>([]);
+  const [searchTerm, setSearchTerm] = useState<string>('');
   const [projects, setProjects] = useState<Project[]>(propProjects || []);
   const [environments, setEnvironments] = useState<Environment[]>(propEnvironments || []);
   const [isLoading, setIsLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
 
   // Modal Mode: 'workflow' (Deploy Hub style) or 'custom' (Freeform Prompt)
   const [scheduleMode, setScheduleMode] = useState<'workflow' | 'custom'>('workflow');
@@ -91,6 +97,23 @@ export const SchedulerManager: React.FC<SchedulerManagerProps> = ({
       setSelectedEnvId(environments[0].id);
     }
   }, [environments]);
+
+  const filteredSchedules = useMemo(() => {
+    if (!searchTerm.trim()) return schedules;
+    const term = searchTerm.toLowerCase();
+    return schedules.filter(
+      (s) =>
+        s.name.toLowerCase().includes(term) ||
+        s.user_request.toLowerCase().includes(term) ||
+        s.cron_expression.toLowerCase().includes(term) ||
+        String(s.id).includes(term)
+    );
+  }, [schedules, searchTerm]);
+
+  const paginatedSchedules = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredSchedules.slice(start, start + pageSize);
+  }, [filteredSchedules, currentPage, pageSize]);
 
   const activeProject = projects.find((p) => p.id === selectedProjectId);
   const activeEnv = environments.find((e) => e.id === selectedEnvId);
@@ -228,7 +251,22 @@ export const SchedulerManager: React.FC<SchedulerManagerProps> = ({
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ position: 'relative' }}>
+              <input
+                type="text"
+                className="chat-input"
+                style={{ padding: '6px 12px 6px 30px', fontSize: '12px', width: '200px' }}
+                placeholder="Search schedules..."
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setCurrentPage(1);
+                }}
+              />
+              <Search size={13} style={{ position: 'absolute', left: 10, top: 9, color: 'var(--text-muted)' }} />
+            </div>
+
             <button className="btn btn-secondary btn-sm" onClick={loadSchedules} disabled={isLoading}>
               <RefreshCw size={13} className={isLoading ? 'spin' : ''} />
               Refresh
@@ -249,8 +287,8 @@ export const SchedulerManager: React.FC<SchedulerManagerProps> = ({
       </div>
 
       {/* Schedules Table */}
-      <div className="card-panel" style={{ padding: 0, overflow: 'hidden' }}>
-        <div className="table-container">
+      <div className="card-panel" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: 0 }}>
+        <div className="table-container" style={{ margin: 0 }}>
           <table className="data-table">
             <thead>
               <tr>
@@ -263,21 +301,23 @@ export const SchedulerManager: React.FC<SchedulerManagerProps> = ({
               </tr>
             </thead>
             <tbody>
-              {schedules.length === 0 ? (
+              {paginatedSchedules.length === 0 ? (
                 <tr>
                   <td colSpan={6} style={{ padding: 36, textAlign: 'center', color: 'var(--text-muted)' }}>
                     <CalendarClock size={32} style={{ opacity: 0.4, marginBottom: 8, display: 'block', margin: '0 auto 8px' }} />
                     <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>No Scheduled Tasks Found</p>
                     <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: 12 }}>
-                      Automate deployment flows or maintenance routines with custom cron schedules.
+                      {searchTerm ? 'No schedules match your search query.' : 'Automate deployment flows or maintenance routines with custom cron schedules.'}
                     </p>
-                    <button className="btn btn-primary btn-sm" onClick={() => setShowAddModal(true)}>
-                      <Plus size={13} /> Schedule Workflow Now
-                    </button>
+                    {!searchTerm && (
+                      <button className="btn btn-primary btn-sm" onClick={() => setShowAddModal(true)}>
+                        <Plus size={13} /> Schedule Workflow Now
+                      </button>
+                    )}
                   </td>
                 </tr>
               ) : (
-                schedules.map((s) => {
+                paginatedSchedules.map((s) => {
                   const isRunningThis = runningScheduleId === s.id;
                   const isDeployTask = s.user_request.toLowerCase().startsWith('deploy');
                   return (
@@ -362,6 +402,19 @@ export const SchedulerManager: React.FC<SchedulerManagerProps> = ({
             </tbody>
           </table>
         </div>
+
+        {/* Pagination Footer */}
+        <PaginationControls
+          currentPage={currentPage}
+          totalItems={filteredSchedules.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setCurrentPage(1);
+          }}
+          itemLabel="scheduled flows"
+        />
       </div>
 
       {/* Add / Configure Schedule Modal */}

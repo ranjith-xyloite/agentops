@@ -64,8 +64,8 @@ export const LoginModal: React.FC = () => {
             <Shield size={22} />
           </div>
           <div>
-            <h2 style={{ fontSize: '18px', fontWeight: 700 }}>AgentOps Authentication</h2>
-            <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Enterprise RBAC & Multi-Tenancy Portal</p>
+            <h2 style={{ fontSize: '18px', fontWeight: 700 }}>XyOps Authentication</h2>
+            <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Xyloite Technologies DevOps & Multi-Tenancy Portal</p>
           </div>
         </div>
 
@@ -99,8 +99,8 @@ export const LoginModal: React.FC = () => {
               onClick={() => handleDemo('operator')}
               disabled={isLoading}
             >
-              <span style={{ fontWeight: 700, color: 'var(--accent-blue)' }}>Operator</span>
-              <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Deploy & Run</span>
+              <span style={{ fontWeight: 700, color: 'var(--status-running)' }}>Operator</span>
+              <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Deploy & Fleet</span>
             </button>
 
             <button
@@ -118,18 +118,18 @@ export const LoginModal: React.FC = () => {
 
         {error && (
           <div style={{
-            background: 'var(--status-danger-bg)',
-            border: '1px solid rgba(239, 68, 68, 0.4)',
-            color: 'var(--status-danger)',
-            padding: '10px 14px',
+            background: 'rgba(239, 68, 68, 0.15)',
+            border: '1px solid var(--status-failed)',
             borderRadius: 'var(--radius-sm)',
+            padding: '10px',
+            color: 'var(--status-failed)',
             fontSize: '12px',
             marginBottom: '16px',
             display: 'flex',
             alignItems: 'center',
             gap: 8
           }}>
-            <AlertCircle size={15} />
+            <AlertCircle size={14} />
             <span>{error}</span>
           </div>
         )}
@@ -137,13 +137,15 @@ export const LoginModal: React.FC = () => {
         {/* Credentials Form */}
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div>
-            <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Username</label>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: 4 }}>
+              Username or Email
+            </label>
             <div style={{ position: 'relative' }}>
               <input
                 type="text"
-                className="chat-input"
-                style={{ width: '100%', paddingLeft: 32 }}
-                placeholder="e.g. admin or operator"
+                className="input-field"
+                style={{ width: '100%', paddingLeft: '32px' }}
+                placeholder="admin"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
@@ -153,12 +155,14 @@ export const LoginModal: React.FC = () => {
           </div>
 
           <div>
-            <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Password</label>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: 4 }}>
+              Password
+            </label>
             <div style={{ position: 'relative' }}>
               <input
                 type="password"
-                className="chat-input"
-                style={{ width: '100%', paddingLeft: 32 }}
+                className="input-field"
+                style={{ width: '100%', paddingLeft: '32px' }}
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -174,7 +178,7 @@ export const LoginModal: React.FC = () => {
             style={{ width: '100%', marginTop: 8, padding: '10px 16px' }}
             disabled={isLoading}
           >
-            {isLoading ? 'Authenticating...' : 'Sign In to AgentOps'}
+            {isLoading ? 'Authenticating...' : 'Sign In to XyOps'}
           </button>
         </form>
       </div>

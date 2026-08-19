@@ -33,7 +33,7 @@ export const DeploymentHub: React.FC<DeploymentHubProps> = ({
   // Selection States
   const [selectedProjectId, setSelectedProjectId] = useState<number>(projects[0]?.id || 1);
   const [selectedEnvId, setSelectedEnvId] = useState<number>(environments[0]?.id || 1);
-  const [selectedBranch, setSelectedBranch] = useState<string>('main');
+  const [selectedBranch, setSelectedBranch] = useState<string>('');
 
   // Pre-flight check state per component
   const [preflightResults, setPreflightResults] = useState<Record<string, PreflightCheckResult>>({});
@@ -212,7 +212,7 @@ export const DeploymentHub: React.FC<DeploymentHubProps> = ({
               </div>
             </div>
 
-            {/* Target Branch Selector */}
+            {/* Target Branch Selector (Optional) */}
             <div>
               <label style={{
                 fontSize: '12px',
@@ -225,31 +225,26 @@ export const DeploymentHub: React.FC<DeploymentHubProps> = ({
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px'
               }}>
-                <GitBranch size={15} /> 3. Target Branch
+                <GitBranch size={15} /> 3. Git Branch (Optional)
               </label>
               <div style={{ display: 'flex', gap: 6 }}>
-                <select
-                  className="chat-input"
+                <input
+                  type="text"
+                  className="chat-input font-mono"
                   style={{
                     flex: 1,
                     padding: '10px 14px',
-                    fontSize: '13.5px',
+                    fontSize: '13px',
                     border: '1px solid var(--border-subtle)',
                     borderRadius: 'var(--radius-md)'
                   }}
                   value={selectedBranch}
                   onChange={(e) => setSelectedBranch(e.target.value)}
-                >
-                  <option value="main">main (production ready)</option>
-                  <option value="master">master</option>
-                  <option value="qa">qa (integration)</option>
-                  <option value="dev">dev (active development)</option>
-                  <option value="staging">staging</option>
-                  <option value="release">release</option>
-                </select>
+                  placeholder="Optional (e.g. main, or leave blank for script default)"
+                />
               </div>
               <div style={{ marginTop: 6, fontSize: '11px', color: 'var(--text-muted)' }}>
-                Git branch passed to autonomous pipeline execution
+                Optional &bull; Triggered via deployment script directly on the host node
               </div>
             </div>
           </div>
@@ -316,11 +311,15 @@ export const DeploymentHub: React.FC<DeploymentHubProps> = ({
               )}
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: activeFlows.length === 1 ? 'minmax(340px, 580px)' : 'repeat(auto-fit, minmax(360px, 1fr))',
+              gap: 16
+            }}>
               {activeFlows.map((flow) => {
-                const srvObj = (flow.server_id ? servers.find((s) => s.id === flow.server_id) : null)
-                  || servers.find((s) => s.environment_id === flow.environment_id)
-                  || servers[0];
+                const srvObj = flow.server_id
+                  ? servers.find((s) => s.id === flow.server_id)
+                  : (servers.find((s) => s.environment_id === flow.environment_id) || null);
 
                 const preflight = preflightResults[flow.component];
                 const isCheckingThis = checkingComponent === flow.component;
@@ -423,13 +422,13 @@ export const DeploymentHub: React.FC<DeploymentHubProps> = ({
                     )}
 
                     {/* Action Buttons */}
-                    <div style={{ display: 'flex', gap: 8, marginTop: 'auto' }}>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginTop: 'auto', paddingTop: 6 }}>
                       <button
                         type="button"
                         className="btn btn-secondary btn-sm"
                         onClick={() => handleRunPreflight(flow.component)}
                         disabled={isCheckingThis}
-                        style={{ fontSize: '11.5px', padding: '6px 10px' }}
+                        style={{ fontSize: '11.5px', padding: '5px 12px', display: 'inline-flex', alignItems: 'center', gap: 5 }}
                         title="Audit node reachability & path before deploying"
                       >
                         <RefreshCw size={12} className={isCheckingThis ? 'spin' : ''} />
@@ -441,12 +440,11 @@ export const DeploymentHub: React.FC<DeploymentHubProps> = ({
                           type="button"
                           className="btn btn-primary btn-sm"
                           style={{
-                            flex: 1,
                             fontSize: '12px',
                             fontWeight: 600,
-                            display: 'flex',
+                            padding: '5px 16px',
+                            display: 'inline-flex',
                             alignItems: 'center',
-                            justifyContent: 'center',
                             gap: 6
                           }}
                           onClick={() => onTriggerDeploy(activeProject.name, flow.component, activeEnvironment.name)}
@@ -455,7 +453,7 @@ export const DeploymentHub: React.FC<DeploymentHubProps> = ({
                           <Play size={12} /> Deploy {flow.component}
                         </button>
                       ) : (
-                        <span className="badge badge-pending" style={{ flex: 1, textAlign: 'center', padding: '6px' }}>
+                        <span className="badge badge-pending" style={{ fontSize: '11px', padding: '4px 10px' }}>
                           View Only
                         </span>
                       )}
