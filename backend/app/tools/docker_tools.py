@@ -495,8 +495,6 @@ async def deploy_backend(task_id: int, parameters: Dict[str, Any]) -> Dict[str, 
         logs = []
         async def emit(msg: str):
             logs.append(msg)
-            te.output = "\n".join(logs)
-            await session.commit()
             await task_broadcaster.broadcast(task_id, {
                 "task_id": task_id,
                 "execution_id": te.id,
@@ -580,12 +578,24 @@ async def deploy_backend(task_id: int, parameters: Dict[str, Any]) -> Dict[str, 
             git_timeout = int(os.getenv("GIT_TIMEOUT", "1800"))
             deploy_timeout = int(os.getenv("DEPLOYMENT_TIMEOUT", "1800"))
 
+            async def stream_stdout(line: str):
+                await emit(f"  {line}")
+
+            async def stream_stderr(line: str):
+                await emit(f"  [stderr] {line}")
+
             # Check if it's a Git repo
             git_check = await executor.execute(host_key, f"cd {repo_path} && git rev-parse --is-inside-work-tree", timeout=15)
             if git_check.exit_code == 0:
                 await emit(f"⚡ Git repository detected. Fetching latest changes on branch '{branch}'...")
                 cmd_git = f"cd {repo_path} && git fetch origin && git checkout {branch} && git pull origin {branch}"
-                git_res = await executor.execute(host_key, cmd_git, timeout=git_timeout)
+                git_res = await executor.execute_streaming(
+                    host_key,
+                    cmd_git,
+                    timeout=git_timeout,
+                    on_stdout=stream_stdout,
+                    on_stderr=stream_stderr
+                )
                 if git_res.exit_code != 0:
                     await emit(f"⚠️ Git pull notice: {git_res.stderr or git_res.stdout}")
                 else:
@@ -606,16 +616,13 @@ async def deploy_backend(task_id: int, parameters: Dict[str, Any]) -> Dict[str, 
 
             cmd_deploy = f"cd {repo_path} && {exec_cmd}"
 
-            deploy_res = await executor.execute(host_key, cmd_deploy, timeout=deploy_timeout)
-            
-            if deploy_res.stdout:
-                for line in deploy_res.stdout.strip().split("\n"):
-                    if line.strip():
-                        await emit(f"  {line}")
-            if deploy_res.stderr:
-                for line in deploy_res.stderr.strip().split("\n"):
-                    if line.strip():
-                        await emit(f"  [stderr] {line}")
+            deploy_res = await executor.execute_streaming(
+                host_key,
+                cmd_deploy,
+                timeout=deploy_timeout,
+                on_stdout=stream_stdout,
+                on_stderr=stream_stderr
+            )
 
             if deploy_res.exit_code != 0:
                 err_msg = f"Deployment script failed with exit code ({deploy_res.exit_code})"
@@ -642,6 +649,7 @@ async def deploy_backend(task_id: int, parameters: Dict[str, Any]) -> Dict[str, 
                     await emit(f"❌ {err_msg}")
                     te.status = "FAILED"
                     te.error = err_msg
+                    te.output = "\n".join(logs)
                     await session.commit()
                     return {"status": "FAILED", "output": te.output}
             else:
@@ -649,6 +657,7 @@ async def deploy_backend(task_id: int, parameters: Dict[str, Any]) -> Dict[str, 
             
             te.status = "SUCCESS"
             await emit("🎉 Backend deployment finished successfully!")
+            te.output = "\n".join(logs)
             await session.commit()
             return {"status": "SUCCESS", "output": te.output}
             
@@ -656,8 +665,10 @@ async def deploy_backend(task_id: int, parameters: Dict[str, Any]) -> Dict[str, 
             te.status = "FAILED"
             te.error = str(e)
             await emit(f"❌ Unexpected exception during backend deployment: {str(e)}")
+            te.output = "\n".join(logs)
             await session.commit()
             return {"status": "FAILED", "output": str(e)}
         finally:
+            te.output = "\n".join(logs)
             te.completed_at = datetime.now(timezone.utc)
             await session.commit()

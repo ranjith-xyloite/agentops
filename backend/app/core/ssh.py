@@ -221,7 +221,7 @@ class SSHExecutor:
         on_stderr: Optional[callable] = None
     ) -> CommandResult:
         """
-        Execute a command with streaming output callbacks.
+        Execute a command with real-time streaming output callbacks.
         
         Args:
             host_key: Registered host identifier
@@ -229,8 +229,8 @@ class SSHExecutor:
             timeout: Command timeout in seconds
             env: Environment variables
             cwd: Working directory
-            on_stdout: Callback for stdout chunks
-            on_stderr: Callback for stderr chunks
+            on_stdout: Callback for stdout lines
+            on_stderr: Callback for stderr lines
             
         Returns:
             CommandResult with exit code, stdout, stderr, and duration
@@ -249,33 +249,57 @@ class SSHExecutor:
                 full_command = f"{env_str} {full_command}"
             
             try:
-                async with conn.create_process(full_command) as process:
-                    # Read stdout and stderr concurrently
-                    async def read_stream(stream, chunks_list, callback):
-                        async for line in stream:
-                            chunks_list.append(line)
+                # Add unbuffered env for real-time output from python/node/docker/etc
+                process = await conn.create_process(full_command, encoding="utf-8")
+                
+                async def read_stream(stream, chunks_list, callback):
+                    if not stream:
+                        return
+                    try:
+                        async for chunk in stream:
+                            chunks_list.append(chunk)
                             if callback:
-                                if asyncio.iscoroutinefunction(callback):
-                                    await callback(line)
-                                else:
-                                    callback(line)
-                    
-                    await asyncio.gather(
+                                for line in chunk.splitlines():
+                                    cleaned = line.rstrip("\r\n")
+                                    if cleaned:
+                                        if asyncio.iscoroutinefunction(callback):
+                                            await callback(cleaned)
+                                        else:
+                                            callback(cleaned)
+                    except Exception as e:
+                        logger.debug(f"Stream read finished: {e}")
+                
+                await asyncio.wait_for(
+                    asyncio.gather(
                         read_stream(process.stdout, stdout_chunks, on_stdout),
                         read_stream(process.stderr, stderr_chunks, on_stderr),
-                    )
-                    
-                    exit_code = await process.wait()
-                    duration_ms = int((time.time() - start_time) * 1000)
-                    
-                    return CommandResult(
-                        exit_code=exit_code,
-                        stdout="".join(stdout_chunks),
-                        stderr="".join(stderr_chunks),
-                        duration_ms=duration_ms
-                    )
+                    ),
+                    timeout=timeout
+                )
+                
+                # In asyncssh, process.exit_status is set once the process completes.
+                # process.wait() can return None if streams are already consumed.
+                # Use exit_status directly; treat None as 0 (success, no explicit exit)
+                try:
+                    await asyncio.wait_for(process.wait(), timeout=10)
+                except Exception:
+                    pass
+                raw_exit = process.exit_status
+                exit_code = int(raw_exit) if raw_exit is not None else 0
+                duration_ms = int((time.time() - start_time) * 1000)
+                
+                return CommandResult(
+                    exit_code=exit_code,
+                    stdout="".join(stdout_chunks),
+                    stderr="".join(stderr_chunks),
+                    duration_ms=duration_ms
+                )
             except asyncio.TimeoutError:
                 duration_ms = int((time.time() - start_time) * 1000)
+                try:
+                    process.terminate()
+                except Exception:
+                    pass
                 return CommandResult(
                     exit_code=-1,
                     stdout="".join(stdout_chunks),

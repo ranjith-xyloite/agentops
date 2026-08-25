@@ -35,11 +35,11 @@ export const PoliciesAndWebhooks: React.FC = () => {
     setIsLoading(true);
     try {
       const [whs, pols] = await Promise.all([
-        listWebhooksApi().catch(() => []),
-        listPoliciesApi().catch(() => []),
+        listWebhooksApi().catch(() => null),
+        listPoliciesApi().catch(() => null),
       ]);
-      setWebhooks(whs);
-      setPolicies(pols);
+      if (Array.isArray(whs)) setWebhooks(whs);
+      if (Array.isArray(pols)) setPolicies(pols);
     } catch (err) {
       console.error('Failed to load policies/webhooks:', err);
     } finally {

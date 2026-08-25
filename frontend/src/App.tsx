@@ -61,6 +61,15 @@ export const App: React.FC = () => {
     }
   });
 
+  const [isPinned, setIsPinned] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('agentops_sidebar_pinned');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+
   useEffect(() => {
     try {
       localStorage.setItem('agentops_sidebar_collapsed', String(isCollapsed));
@@ -68,6 +77,14 @@ export const App: React.FC = () => {
       // ignore
     }
   }, [isCollapsed]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('agentops_sidebar_pinned', String(isPinned));
+    } catch {
+      // ignore
+    }
+  }, [isPinned]);
 
   // Global Ctrl+B shortcut to toggle sidebar
   useEffect(() => {
@@ -104,24 +121,26 @@ export const App: React.FC = () => {
   const [terminalLogs, setTerminalLogs] = useState<string[]>([]);
   const [currentTaskStatus, setCurrentTaskStatus] = useState<TaskStatus | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  // Shared pending plan — drives approval banners in both Chat and Terminal
+  const [pendingPlan, setPendingPlan] = useState<ChatPlanResponse | null>(null);
 
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
-  // Initial data loading
+  // Safe data loading with stale-while-revalidate protection
   const refreshAllData = async () => {
     if (!isAuthenticated) return;
     try {
       const [tasksData, serversData, projectsData, envsData, statsData] = await Promise.all([
-        listTasks().catch(() => []),
-        listServers().catch(() => []),
-        listProjects().catch(() => []),
-        listEnvironments().catch(() => []),
+        listTasks().catch(() => null),
+        listServers().catch(() => null),
+        listProjects().catch(() => null),
+        listEnvironments().catch(() => null),
         getStats().catch(() => null),
       ]);
-      setTasks(tasksData);
-      setServers(serversData);
-      setProjects(projectsData);
-      setEnvironments(envsData);
+      if (Array.isArray(tasksData)) setTasks(tasksData);
+      if (Array.isArray(serversData)) setServers(serversData);
+      if (Array.isArray(projectsData)) setProjects(projectsData);
+      if (Array.isArray(envsData)) setEnvironments(envsData);
       if (statsData) setStats(statsData);
     } catch (err) {
       console.error('Failed to load system data:', err);
@@ -144,11 +163,15 @@ export const App: React.FC = () => {
       unsubscribeRef.current();
     }
 
+    // Track last status to detect transitions (avoid duplicate messages)
+    let lastNotifiedStatus: string | null = null;
+
     // Fetch snapshot
     getTask(activeTaskId)
       .then((t) => {
         setActiveTask(t);
         setCurrentTaskStatus(t.status);
+        lastNotifiedStatus = t.status;
         if (t.executions && t.executions.length > 0) {
           const combinedLogs = t.executions
             .map((e) => e.output || e.error || '')
@@ -167,6 +190,34 @@ export const App: React.FC = () => {
         }
         if (event.status) {
           setCurrentTaskStatus(event.status);
+
+          // Notify chat panel when deployment completes — only once per transition
+          if (event.status !== lastNotifiedStatus) {
+            const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            if (event.status === 'SUCCESS') {
+              lastNotifiedStatus = 'SUCCESS';
+              setChatMessages((prev) => [
+                ...prev,
+                {
+                  id: `status-success-${activeTaskId}-${Date.now()}`,
+                  sender: 'agent' as const,
+                  text: `🎉 Deployment #${activeTaskId} completed successfully! The service is live and healthy.`,
+                  timestamp: nowStr,
+                },
+              ]);
+            } else if (event.status === 'FAILED') {
+              lastNotifiedStatus = 'FAILED';
+              setChatMessages((prev) => [
+                ...prev,
+                {
+                  id: `status-failed-${activeTaskId}-${Date.now()}`,
+                  sender: 'agent' as const,
+                  text: `❌ Deployment #${activeTaskId} failed. Check the Execution Stream for error details.`,
+                  timestamp: nowStr,
+                },
+              ]);
+            }
+          }
         }
         if (event.type === 'init' && event.executions) {
           const initLogs = event.executions
@@ -210,6 +261,13 @@ export const App: React.FC = () => {
       setCurrentTaskStatus(plan.status);
       setTerminalLogs([`[System] Initialized plan for task #${plan.task_id} (${plan.status})`]);
 
+      // Track the plan as pending if it needs confirmation
+      if (plan.execution_plan.requires_confirmation) {
+        setPendingPlan(plan);
+      } else {
+        setPendingPlan(null);
+      }
+
       const agentMsg: ChatMessage = {
         id: `agent-${Date.now()}`,
         sender: 'agent',
@@ -243,6 +301,8 @@ export const App: React.FC = () => {
       setTerminalLogs((prev) => [...prev, `[System] Confirming task #${taskId}...`]);
       await confirmTask(taskId);
       setCurrentTaskStatus('RUNNING');
+      // Clear the shared pending plan so both panels sync immediately
+      setPendingPlan(null);
       await refreshAllData();
     } catch (err: any) {
       setTerminalLogs((prev) => [...prev, `[System Error] ${err.message}`]);
@@ -253,6 +313,8 @@ export const App: React.FC = () => {
     try {
       await cancelTask(taskId);
       setCurrentTaskStatus('CANCELLED');
+      // Clear the shared pending plan so both panels sync immediately
+      setPendingPlan(null);
       setTerminalLogs((prev) => [...prev, `[System] Task #${taskId} has been cancelled.`]);
       await refreshAllData();
     } catch (err: any) {
@@ -337,6 +399,8 @@ export const App: React.FC = () => {
         activeTasksCount={runningTasksCount}
         isCollapsed={isCollapsed}
         setIsCollapsed={setIsCollapsed}
+        isPinned={isPinned}
+        setIsPinned={setIsPinned}
         llmStatus={null}
         onOpenLLMModal={() => {}}
       />
@@ -357,11 +421,13 @@ export const App: React.FC = () => {
             <div className="console-workspace">
               <ChatConsole
                 messages={chatMessages}
+                pendingPlan={pendingPlan}
                 onSendMessage={handleSendMessage}
                 onConfirmTask={handleConfirmTask}
                 onCancelTask={handleCancelTask}
                 onSelectTaskToStream={(id) => setActiveTaskId(id)}
                 isProcessing={isProcessing}
+                onAppendMessage={(msg) => setChatMessages((prev) => [...prev, msg])}
               />
 
               <TaskTerminal

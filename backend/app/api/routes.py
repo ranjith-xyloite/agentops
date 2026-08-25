@@ -636,12 +636,15 @@ async def stream_task_events(
         }
         yield f"data: {json.dumps(init_payload)}\n\n"
 
+        if task.status in ["SUCCESS", "FAILED", "CANCELLED", "ROLLED_BACK"]:
+            return
+
         queue = await task_broadcaster.subscribe(task_id)
         try:
             while True:
                 data = await queue.get()
                 yield f"data: {json.dumps(data)}\n\n"
-                if data.get("status") in ["SUCCESS", "FAILED", "CANCELLED"] or data.get("type") == "complete":
+                if data.get("status") in ["SUCCESS", "FAILED", "CANCELLED", "ROLLED_BACK"] or data.get("type") == "complete":
                     break
         finally:
             await task_broadcaster.unsubscribe(task_id, queue)

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Send, Bot, User, Play, XCircle, Sparkles, CheckCircle2, ShieldAlert } from 'lucide-react';
+import { Send, Bot, User, XCircle, Sparkles, CheckCircle2, ShieldAlert, AlertTriangle } from 'lucide-react';
 import { ChatPlanResponse } from '../types';
 import { useAuth } from '../context/AuthContext';
 
@@ -9,15 +9,19 @@ export interface ChatMessage {
   text: string;
   plan?: ChatPlanResponse;
   timestamp: string;
+  /** Set after confirmation/cancellation to replace action buttons */
+  resolved?: 'confirmed' | 'cancelled';
 }
 
 interface ChatConsoleProps {
   messages: ChatMessage[];
+  pendingPlan?: ChatPlanResponse | null;
   onSendMessage: (msg: string) => Promise<ChatPlanResponse>;
   onConfirmTask: (taskId: number) => Promise<void>;
   onCancelTask: (taskId: number) => Promise<void>;
   onSelectTaskToStream: (taskId: number) => void;
   isProcessing: boolean;
+  onAppendMessage: (msg: ChatMessage) => void;
 }
 
 const QUICK_PROMPTS = [
@@ -30,16 +34,21 @@ const QUICK_PROMPTS = [
 
 export const ChatConsole: React.FC<ChatConsoleProps> = ({
   messages,
+  pendingPlan,
   onSendMessage,
   onConfirmTask,
   onCancelTask,
   onSelectTaskToStream,
   isProcessing,
+  onAppendMessage,
 }) => {
   const { role } = useAuth();
   const isViewer = role === 'viewer';
 
   const [input, setInput] = useState('');
+  const [confirmingId, setConfirmingId] = useState<number | null>(null);
+  // Track which task IDs have been resolved (confirmed or cancelled) and how
+  const [resolvedTasks, setResolvedTasks] = useState<Map<number, 'confirmed' | 'cancelled'>>(new Map());
 
   const handleSend = async (textToSend?: string) => {
     if (isViewer) {
@@ -59,8 +68,46 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
     }
   };
 
+  const handleConfirm = async (taskId: number) => {
+    if (confirmingId) return;
+    setConfirmingId(taskId);
+    try {
+      await onConfirmTask(taskId);
+      setResolvedTasks((prev) => new Map(prev).set(taskId, 'confirmed'));
+      onAppendMessage({
+        id: `sys-confirm-${Date.now()}`,
+        sender: 'agent',
+        text: `✅ Task #${taskId} confirmed — deployment is now running. Watch the Execution Stream for live logs.`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      });
+    } finally {
+      setConfirmingId(null);
+    }
+  };
+
+  const handleCancel = async (taskId: number) => {
+    if (confirmingId) return;
+    setConfirmingId(taskId);
+    try {
+      await onCancelTask(taskId);
+      setResolvedTasks((prev) => new Map(prev).set(taskId, 'cancelled'));
+      onAppendMessage({
+        id: `sys-cancel-${Date.now()}`,
+        sender: 'agent',
+        text: `❌ Task #${taskId} was cancelled. No changes have been made to the remote server.`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      });
+    } finally {
+      setConfirmingId(null);
+    }
+  };
+
+  // A plan's buttons are active only if it is still pending AND not yet resolved
+  const isPlanPending = (taskId: number) =>
+    pendingPlan?.task_id === taskId && !resolvedTasks.has(taskId);
+
   return (
-    <div className="card-panel">
+    <div className="card-panel" style={{ display: 'flex', flexDirection: 'column' }}>
       <div className="panel-header">
         <div className="panel-title">
           <Bot size={18} style={{ color: 'var(--accent-blue)' }} />
@@ -73,6 +120,46 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
           </div>
         )}
       </div>
+
+      {/* ── Shared Approval Banner (shown at top of chat when any plan is pending) ── */}
+      {pendingPlan && pendingPlan.execution_plan.requires_confirmation && (
+        <div style={{
+          margin: '0 0 2px 0',
+          padding: '10px 16px',
+          background: 'linear-gradient(90deg, rgba(245,158,11,0.18) 0%, rgba(16,185,129,0.14) 100%)',
+          borderBottom: '1px solid rgba(245,158,11,0.45)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 12,
+          flexShrink: 0,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, color: '#fbbf24', fontSize: '12.5px', fontWeight: 500 }}>
+            <AlertTriangle size={16} />
+            <span>
+              Safety Gate: Task #{pendingPlan.task_id} requires confirmation before executing on the remote server.
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => handleCancel(pendingPlan.task_id)}
+              disabled={!!confirmingId || isViewer}
+              style={{ fontSize: '12px', padding: '5px 10px' }}
+            >
+              <XCircle size={13} /> Cancel
+            </button>
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => handleConfirm(pendingPlan.task_id)}
+              disabled={!!confirmingId || isViewer}
+              style={{ fontSize: '12px', padding: '5px 10px', background: '#10b981', color: '#0f172a', fontWeight: 700, border: 'none' }}
+            >
+              ▶ {confirmingId ? 'Confirming...' : 'Confirm & Execute'}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="chat-messages-container">
         {messages.map((m) => (
@@ -131,24 +218,27 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
                 )}
 
                 {m.plan.execution_plan.requires_confirmation ? (
-                  <div className="plan-action-bar">
-                    <button
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => onCancelTask(m.plan!.task_id)}
-                      disabled={isViewer}
-                    >
-                      <XCircle size={13} />
-                      Cancel
-                    </button>
-                    <button
-                      className="btn btn-primary btn-sm"
-                      onClick={() => onConfirmTask(m.plan!.task_id)}
-                      disabled={isViewer}
-                    >
-                      <Play size={13} />
-                      Confirm & Execute {m.plan.execution_plan.steps ? 'Pipeline' : ''}
-                    </button>
-                  </div>
+                  <>
+                    {resolvedTasks.has(m.plan.task_id) ? (
+                      /* Plan actioned — show resolved status chip */
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: '11.5px' }}>
+                        {resolvedTasks.get(m.plan.task_id) === 'cancelled' ? (
+                          <span style={{ color: '#f87171', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <XCircle size={13} /> Task #{m.plan!.task_id} was cancelled
+                          </span>
+                        ) : (
+                          <span style={{ color: '#34d399', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <CheckCircle2 size={13} /> Task #{m.plan!.task_id} confirmed — running
+                          </span>
+                        )}
+                      </div>
+                    ) : isPlanPending(m.plan.task_id) ? (
+                      /* Awaiting confirmation — hint to use the banner above */
+                      <div style={{ fontSize: '11px', color: '#fbbf24', marginTop: 8, display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <AlertTriangle size={12} /> Use the Safety Gate above to confirm or cancel
+                      </div>
+                    ) : null}
+                  </>
                 ) : (
                   <div style={{ fontSize: '11.5px', color: 'var(--status-success)', display: 'flex', alignItems: 'center', gap: 4 }}>
                     <CheckCircle2 size={13} /> Safe operation auto-dispatched

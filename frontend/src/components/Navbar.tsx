@@ -4,7 +4,7 @@ import {
   Terminal, Server, FolderGit2, ListTodo, Users, Key, History,
   LogOut, User as UserIcon, Activity, CalendarClock,
   ShieldAlert, Sparkles, Cpu, X, Rocket, Layers,
-  PanelLeftClose, PanelLeftOpen, ChevronRight
+  ChevronRight
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { LLMProviderStatus } from '../types';
@@ -38,12 +38,11 @@ interface NavbarProps {
 export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
   activeTasksCount,
-  isCollapsed = false,
-  setIsCollapsed,
 }) => {
   const { user, role, logout } = useAuth();
   const [llmStatus, setLlmStatus] = useState<LLMProviderStatus | null>(null);
   const [showLLMModal, setShowLLMModal] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState('ollama');
   const [selectedModel, setSelectedModel] = useState('qwen3');
   const [apiKey, setApiKey] = useState('');
@@ -51,6 +50,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const defaultModels: Record<string, string> = {
     ollama: 'qwen3',
+    nvidia: 'meta/llama-3.3-70b-instruct',
     groq: 'llama-3.3-70b-versatile',
     openrouter: 'meta-llama/llama-3.3-70b-instruct',
     deepseek: 'deepseek-chat',
@@ -147,20 +147,8 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <header className="navbar" style={{ padding: '0 20px' }}>
-      {/* Left: Sidebar Toggle + Breadcrumb */}
+      {/* Left: Breadcrumb */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-        {setIsCollapsed && (
-          <button
-            type="button"
-            onClick={() => setIsCollapsed((prev) => !prev)}
-            className="btn btn-secondary btn-sm"
-            title={isCollapsed ? 'Open Left Sidebar (Ctrl+B)' : 'Collapse Left Sidebar (Ctrl+B)'}
-            style={{ padding: '6px 8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          >
-            {isCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
-          </button>
-        )}
-
         <div className="nav-breadcrumb" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
           <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>XyOps</span>
           <ChevronRight size={13} style={{ color: 'var(--text-muted)' }} />
@@ -223,9 +211,9 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             <button
               className="btn btn-secondary btn-sm"
-              onClick={logout}
+              onClick={() => setShowLogoutConfirm(true)}
               title="Sign Out"
-              style={{ padding: '6px 10px' }}
+              style={{ padding: '6px 10px', cursor: 'pointer' }}
             >
               <LogOut size={13} />
             </button>
@@ -237,6 +225,122 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         )}
       </div>
+
+      {/* Logout Confirmation Popup Modal */}
+      {showLogoutConfirm && typeof document !== 'undefined' && createPortal(
+        <div
+          onClick={() => setShowLogoutConfirm(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(5, 8, 15, 0.75)',
+            backdropFilter: 'blur(5px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 99999,
+            padding: '16px',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: 'var(--bg-secondary)',
+              border: '1px solid var(--border-medium)',
+              borderRadius: 'var(--radius-md)',
+              padding: '24px',
+              width: '380px',
+              maxWidth: '92vw',
+              boxShadow: '0 20px 45px rgba(0, 0, 0, 0.6)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '18px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <div
+                style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: 'var(--radius-sm)',
+                  backgroundColor: 'var(--status-danger-bg)',
+                  color: 'var(--status-danger)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <LogOut size={20} />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  Confirm Sign Out
+                </h3>
+                <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                  Are you sure you want to log out?
+                </p>
+              </div>
+            </div>
+
+            {user && (
+              <div
+                style={{
+                  backgroundColor: 'var(--bg-tertiary)',
+                  padding: '10px 14px',
+                  borderRadius: 'var(--radius-sm)',
+                  fontSize: '12.5px',
+                  color: 'var(--text-secondary)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  border: '1px solid var(--border-subtle)',
+                }}
+              >
+                <span>Active User:</span>
+                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                  {user.username} {role && `(${role})`}
+                </span>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '6px' }}>
+              <button
+                type="button"
+                onClick={() => setShowLogoutConfirm(false)}
+                className="btn btn-secondary"
+                style={{ padding: '8px 16px', fontSize: '13px', borderRadius: 'var(--radius-sm)' }}
+              >
+                No, Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowLogoutConfirm(false);
+                  logout();
+                }}
+                className="btn btn-danger"
+                style={{
+                  padding: '8px 18px',
+                  fontSize: '13px',
+                  backgroundColor: 'var(--status-danger)',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: 'var(--radius-sm)',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Yes, Log Out
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* Multi-LLM Provider Configuration Modal */}
       {showLLMModal && typeof document !== 'undefined' && createPortal(
@@ -290,6 +394,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: 4 }}>Active LLM Provider</label>
                 <select className="input-field" value={selectedProvider} onChange={(e) => handleProviderChange(e.target.value)}>
                   <option value="ollama">Local Ollama (qwen3, llama3, deepseek)</option>
+                  <option value="nvidia">NVIDIA NIM / NVIDIA AI (Llama 3.3 70B, Nemotron, DeepSeek R1)</option>
                   <option value="groq">Groq Cloud (Llama 3.3 70B, Mixtral - Ultra Fast)</option>
                   <option value="openrouter">OpenRouter (DeepSeek R1, Llama 3.3, Qwen 2.5)</option>
                   <option value="deepseek">DeepSeek Official API (DeepSeek V3 / R1)</option>
@@ -307,7 +412,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <input
                   type="text"
                   className="input-field font-mono"
-                  placeholder="e.g. llama-3.3-70b-versatile, deepseek-chat, qwen3"
+                  placeholder="e.g. meta/llama-3.3-70b-instruct, llama-3.3-70b-versatile, deepseek-chat"
                   value={selectedModel}
                   onChange={(e) => setSelectedModel(e.target.value)}
                 />
@@ -319,14 +424,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <input
                     type="password"
                     className="input-field font-mono"
-                    placeholder="Enter provider API key (e.g. gsk_..., sk-or-..., sk-...)"
+                    placeholder="Enter provider API key (e.g. nvapi-..., gsk_..., sk-...)"
                     value={apiKey}
                     onChange={(e) => setApiKey(e.target.value)}
                   />
                 </div>
               )}
 
-              {(selectedProvider === 'openai_compatible' || selectedProvider === 'groq' || selectedProvider === 'openrouter' || selectedProvider === 'deepseek' || selectedProvider === 'together') && (
+              {(selectedProvider === 'openai_compatible' || selectedProvider === 'nvidia' || selectedProvider === 'groq' || selectedProvider === 'openrouter' || selectedProvider === 'deepseek' || selectedProvider === 'together') && (
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: 4 }}>
                     Custom Base URL {selectedProvider === 'openai_compatible' ? '(Required)' : '(Optional Override)'}
@@ -335,6 +440,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     type="text"
                     className="input-field font-mono"
                     placeholder={
+                      selectedProvider === 'nvidia' ? 'https://integrate.api.nvidia.com/v1' :
                       selectedProvider === 'groq' ? 'https://api.groq.com/openai/v1' :
                       selectedProvider === 'openrouter' ? 'https://openrouter.ai/api/v1' :
                       selectedProvider === 'deepseek' ? 'https://api.deepseek.com/v1' :

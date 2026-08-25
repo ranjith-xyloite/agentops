@@ -135,35 +135,35 @@ export const ThemeToggle: React.FC = () => {
         </button>
       </div>
 
-      {/* Dropdown Menu */}
+      {/* Dropup Menu (Opens Upward to avoid viewport clipping) */}
       {isOpen && (
         <div
           className="theme-dropdown-menu"
           style={{
             position: 'absolute',
-            top: 'calc(100% + 6px)',
+            bottom: 'calc(100% + 8px)',
             right: 0,
             zIndex: 1000,
-            minWidth: '220px',
+            width: '192px',
             background: 'var(--bg-elevated)',
             border: '1px solid var(--border-medium)',
             borderRadius: 'var(--radius-md)',
-            boxShadow: 'var(--shadow-lg)',
-            padding: '6px',
+            boxShadow: '0 12px 28px rgba(0, 0, 0, 0.55)',
+            padding: '5px',
             display: 'flex',
             flexDirection: 'column',
-            gap: '4px',
+            gap: '3px',
             backdropFilter: 'blur(16px)',
             animation: 'fadeIn 0.15s ease-out',
           }}
         >
           <div
             style={{
-              padding: '6px 10px',
-              fontSize: '11px',
-              fontWeight: 600,
+              padding: '4px 8px',
+              fontSize: '10px',
+              fontWeight: 700,
               textTransform: 'uppercase',
-              letterSpacing: '0.05em',
+              letterSpacing: '0.06em',
               color: 'var(--text-muted)',
               borderBottom: '1px solid var(--border-subtle)',
               marginBottom: '2px',

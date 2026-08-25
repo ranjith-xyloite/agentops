@@ -189,12 +189,27 @@ def mock_ssh_executor(monkeypatch):
             return CommandResult(exit_code=0, stdout="52\n", stderr="", duration_ms=10)
         elif "uptime" in command:
             return CommandResult(exit_code=0, stdout="0.45\n", stderr="", duration_ms=10)
-        elif "nproc" in command:
-            return CommandResult(exit_code=0, stdout="4\n", stderr="", duration_ms=5)
         else:
             return CommandResult(exit_code=0, stdout="Success", stderr="", duration_ms=50)
 
+    async def default_execute_streaming(host_key, command, timeout=300, env=None, cwd=None, on_stdout=None, on_stderr=None):
+        res = default_execute(host_key, command, timeout, env, cwd)
+        if on_stdout and res.stdout:
+            for line in res.stdout.splitlines():
+                if asyncio.iscoroutinefunction(on_stdout):
+                    await on_stdout(line)
+                else:
+                    on_stdout(line)
+        if on_stderr and res.stderr:
+            for line in res.stderr.splitlines():
+                if asyncio.iscoroutinefunction(on_stderr):
+                    await on_stderr(line)
+                else:
+                    on_stderr(line)
+        return res
+
     mock_exec.execute.side_effect = default_execute
+    mock_exec.execute_streaming.side_effect = default_execute_streaming
 
     import app.tools.deployment as dep_mod
     import app.tools.docker_tools as doc_mod

@@ -20,6 +20,7 @@ class MultiLLMClient(LLMClient):
     """
     PROVIDER_BASE_URLS = {
         "openai": "https://api.openai.com/v1",
+        "nvidia": "https://integrate.api.nvidia.com/v1",
         "groq": "https://api.groq.com/openai/v1",
         "openrouter": "https://openrouter.ai/api/v1",
         "deepseek": "https://api.deepseek.com/v1",
@@ -28,6 +29,7 @@ class MultiLLMClient(LLMClient):
 
     DEFAULT_MODELS = {
         "ollama": "qwen3",
+        "nvidia": "meta/llama-3.3-70b-instruct",
         "groq": "llama-3.3-70b-versatile",
         "openrouter": "meta-llama/llama-3.3-70b-instruct",
         "deepseek": "deepseek-chat",
@@ -42,6 +44,7 @@ class MultiLLMClient(LLMClient):
         self.model = os.getenv("LLM_MODEL", os.getenv("OLLAMA_MODEL", self.DEFAULT_MODELS.get(self.provider, "qwen3")))
         self.ollama_client = OllamaClient()
         self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
+        self.nvidia_api_key = os.getenv("NVIDIA_API_KEY", "")
         self.groq_api_key = os.getenv("GROQ_API_KEY", "")
         self.openrouter_api_key = os.getenv("OPENROUTER_API_KEY", "")
         self.deepseek_api_key = os.getenv("DEEPSEEK_API_KEY", "")
@@ -64,6 +67,8 @@ class MultiLLMClient(LLMClient):
         if api_key:
             if self.provider == "openai":
                 self.openai_api_key = api_key
+            elif self.provider == "nvidia":
+                self.nvidia_api_key = api_key
             elif self.provider == "groq":
                 self.groq_api_key = api_key
             elif self.provider == "openrouter":
@@ -86,7 +91,7 @@ class MultiLLMClient(LLMClient):
             "active_model": self.model,
             "active_base_url": active_url,
             "available_providers": [
-                "ollama", "groq", "openrouter", "deepseek", "together",
+                "ollama", "nvidia", "groq", "openrouter", "deepseek", "together",
                 "openai_compatible", "openai", "anthropic", "gemini", "heuristic_fallback"
             ]
         }
@@ -94,7 +99,7 @@ class MultiLLMClient(LLMClient):
     async def parse(self, user_message: str, context: Dict[str, Any]) -> ToolRequest:
         """Route to active provider with graceful fallback chain."""
         try:
-            if self.provider in ("openai", "groq", "openrouter", "deepseek", "together", "openai_compatible"):
+            if self.provider in ("openai", "nvidia", "groq", "openrouter", "deepseek", "together", "openai_compatible"):
                 key = self._get_active_api_key()
                 if key or self.provider == "openai_compatible":
                     base_url = self.custom_base_url or self.PROVIDER_BASE_URLS.get(self.provider, "https://api.openai.com/v1")
@@ -114,6 +119,8 @@ class MultiLLMClient(LLMClient):
     def _get_active_api_key(self) -> str:
         if self.provider == "openai":
             return self.openai_api_key
+        elif self.provider == "nvidia":
+            return self.nvidia_api_key or self.custom_api_key
         elif self.provider == "groq":
             return self.groq_api_key or self.custom_api_key
         elif self.provider == "openrouter":
