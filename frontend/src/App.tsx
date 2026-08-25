@@ -340,11 +340,11 @@ export const App: React.FC = () => {
   };
 
   const handleTriggerDeploy = async (projectName: string, component: string, env: string) => {
+    // Switch to console so the user can see the Safety Gate banner and confirm/cancel
     setActiveTab('console');
-    const planRes = await handleSendMessage(`Deploy ${projectName} ${component} to ${env}`);
-    if (planRes && planRes.task_id && (planRes.execution_plan?.tool || (planRes.execution_plan as any)?.steps)) {
-      await handleConfirmTask(planRes.task_id);
-    }
+    // Creates the plan — requires_confirmation is enforced server-side for deploy tools.
+    // Do NOT auto-confirm here; the user must explicitly click Confirm & Execute.
+    await handleSendMessage(`Deploy ${projectName} ${component} to ${env}`);
   };
 
   const handleAddProject = async (projectData: { name: string; description?: string; repository_url?: string }): Promise<Project> => {
