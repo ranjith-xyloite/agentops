@@ -133,11 +133,17 @@ class MultiLLMClient(LLMClient):
 
     def _build_system_prompt(self, context: Dict[str, Any]) -> str:
         allowed_tools = context.get("allowed_tools", [
-            "deploy_frontend", "deploy_backend", "docker_status", "restart_container", "server_health_check"
+            "deploy_frontend", "deploy_backend", "docker_status",
+            "restart_container", "server_health_check", "get_server_metrics"
         ])
         projects = context.get("projects", ["agentops", "ecommerce-app", "crm-system", "mom"])
         environments = context.get("environments", ["dev", "qa", "uat", "production", "prod"])
         servers = context.get("servers", [])
+        recent_tasks = context.get("recent_tasks", [])
+
+        recent_tasks_str = ""
+        if recent_tasks:
+            recent_tasks_str = f"\n8. Recent task history (last {len(recent_tasks)}): {json.dumps(recent_tasks)}. Use this to answer questions like 'what was deployed last?' or 'what is the status of the last task?'."
 
         return f"""You are the strict AI DevOps Orchestrator for AgentOps.
 Always and only respond with a valid JSON object matching the ToolRequest schema:
@@ -155,10 +161,11 @@ Guidelines:
 1. For greetings (e.g. "hi", "hello", "hey") or general questions, set "tool": null and provide a friendly greeting in "question".
 2. If the user asks for a DevOps operation, select from allowed_tools: {json.dumps(allowed_tools)}.
 3. Mutating operations (deploy_frontend, deploy_backend, restart_container) MUST have "requires_confirmation": true.
-4. Read-only operations (server_health_check, docker_status) MUST have "requires_confirmation": false.
+4. Read-only operations (server_health_check, docker_status, get_server_metrics) MUST have "requires_confirmation": false.
 5. Known projects: {json.dumps(projects)}. Known environments: {json.dumps(environments)}.
 6. Known registered servers: {json.dumps(servers)}. When the user asks about a specific server (e.g. 'physical server', 'KC-server'), pass "server": "<matched_server_name>" in parameters.
-7. Respond with pure JSON only without markdown formatting."""
+7. Use get_server_metrics when user asks about server metrics, disk usage, memory, CPU, uptime, or running containers on a specific server.{recent_tasks_str}
+Respond with pure JSON only without markdown formatting."""
 
     def _json_to_tool_request(self, data: Any) -> ToolRequest:
         if isinstance(data, dict):

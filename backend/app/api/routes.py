@@ -498,6 +498,57 @@ async def list_audit_logs(
 
 
 # =========================================================
+# Deployment Audit — task history with user info
+# =========================================================
+
+@router.get("/tasks/audit")
+async def get_deployment_audit(
+    limit: int = Query(50, ge=1, le=200),
+    tool: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    current_user: User = Depends(require_role(UserRole.OPERATOR)),
+    db: AsyncSession = Depends(get_session)
+):
+    """Return deployment task history with triggered-by user info."""
+    from app.models.models import User as UserModel
+    stmt = (
+        select(Task, UserModel.username)
+        .outerjoin(UserModel, Task.user_id == UserModel.id)
+        .where(Task.intent.isnot(None))
+        .order_by(Task.id.desc())
+        .limit(limit)
+    )
+    if tool:
+        stmt = stmt.where(Task.intent == tool)
+    if status:
+        stmt = stmt.where(Task.status == status)
+    res = await db.execute(stmt)
+    rows = res.all()
+    result = []
+    for task, username in rows:
+        # Get tool name from first execution
+        exec_res = await db.execute(
+            select(TaskExecution).where(TaskExecution.task_id == task.id).limit(1)
+        )
+        first_exec = exec_res.scalars().first()
+        duration_s = None
+        if task.started_at and task.completed_at:
+            duration_s = int((task.completed_at - task.started_at).total_seconds())
+        result.append({
+            "id": task.id,
+            "user_request": task.user_request,
+            "tool": first_exec.tool_name if first_exec else task.intent,
+            "parameters": first_exec.parameters if first_exec else {},
+            "status": task.status,
+            "triggered_by": username or "system",
+            "created_at": task.created_at.isoformat() if task.created_at else None,
+            "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+            "duration_s": duration_s,
+        })
+    return result
+
+
+# =========================================================
 # Protected Core DevOps Endpoints (RBAC Gated)
 # =========================================================
 
@@ -514,6 +565,21 @@ async def chat_endpoint(
     envs_res = await db.execute(select(Environment))
     env_names = [e.name for e in envs_res.scalars().all()]
 
+    # Inject last 5 tasks as history context so LLM can answer "what was deployed last?"
+    recent_tasks_res = await db.execute(
+        select(Task).order_by(Task.id.desc()).limit(5)
+    )
+    recent_tasks_raw = recent_tasks_res.scalars().all()
+    recent_tasks = [
+        {
+            "id": t.id,
+            "request": t.user_request,
+            "status": t.status,
+            "created_at": t.created_at.strftime("%Y-%m-%d %H:%M") if t.created_at else None,
+        }
+        for t in recent_tasks_raw
+    ]
+
     context = {
         "user_id": current_user.id,
         "username": current_user.username,
@@ -522,9 +588,10 @@ async def chat_endpoint(
         "projects": accessible_projects,
         "servers": server_names,
         "environments": env_names,
+        "recent_tasks": recent_tasks,
         "allowed_tools": [
             "deploy_frontend", "deploy_backend", "docker_status",
-            "restart_container", "server_health_check"
+            "restart_container", "server_health_check", "get_server_metrics"
         ]
     }
 
@@ -651,6 +718,119 @@ async def stream_task_events(
 
     return StreamingResponse(
         event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
+
+# =========================================================
+# Container Management — list & live log streaming
+# =========================================================
+
+@router.get("/containers")
+async def list_all_containers(
+    server_id: Optional[int] = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session)
+):
+    """List all Docker containers from all (or a specific) registered server(s) via SSH."""
+    from app.core.ssh import get_ssh_executor, register_server_in_pool
+
+    stmt = select(Server)
+    if server_id:
+        stmt = stmt.where(Server.id == server_id)
+    res = await db.execute(stmt)
+    servers = res.scalars().all()
+
+    executor = get_ssh_executor()
+    result = []
+    for server in servers:
+        try:
+            register_server_in_pool(server)
+            host_key = f"server:{server.id}"
+            # docker ps -a gives all (running + stopped)
+            cmd = "docker ps -a --format '{{.ID}}|{{.Names}}|{{.Image}}|{{.Status}}|{{.Ports}}|{{.CreatedAt}}' 2>/dev/null"
+            r = await executor.execute(host_key, cmd, timeout=10)
+            containers = []
+            if r.exit_code == 0 and r.stdout.strip():
+                for line in r.stdout.strip().splitlines():
+                    parts = line.split("|")
+                    if len(parts) >= 5:
+                        running = "up" in parts[3].lower()
+                        containers.append({
+                            "id": parts[0][:12],
+                            "name": parts[1],
+                            "image": parts[2],
+                            "status": parts[3],
+                            "ports": parts[4],
+                            "created_at": parts[5] if len(parts) > 5 else "",
+                            "running": running,
+                        })
+            result.append({
+                "server_id": server.id,
+                "server_name": server.name,
+                "hostname": server.hostname,
+                "environment": server.environment.name if server.environment else "unknown",
+                "containers": containers,
+                "reachable": True,
+            })
+        except Exception as e:
+            result.append({
+                "server_id": server.id,
+                "server_name": server.name,
+                "hostname": server.hostname,
+                "environment": server.environment.name if server.environment else "unknown",
+                "containers": [],
+                "reachable": False,
+                "error": str(e),
+            })
+    return result
+
+
+@router.get("/containers/{server_id}/{container_name}/logs")
+async def stream_container_logs(
+    server_id: int,
+    container_name: str,
+    tail: int = Query(100, ge=10, le=1000),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session)
+):
+    """Stream live Docker container logs via SSH SSE."""
+    from app.core.ssh import get_ssh_executor, register_server_in_pool
+    import asyncssh
+
+    server = await db.get(Server, server_id)
+    if not server:
+        raise HTTPException(status_code=404, detail="Server not found")
+
+    async def log_generator():
+        try:
+            register_server_in_pool(server)
+            executor = get_ssh_executor()
+            host_key = f"server:{server.id}"
+
+            # Send initial connected event
+            yield f"data: {json.dumps({'type': 'connected', 'container': container_name, 'server': server.name})}\n\n"
+
+            async with executor.pool.get_connection(host_key) as conn:
+                cmd = f"docker logs --tail={tail} --follow --timestamps {container_name} 2>&1"
+                async with conn.create_process(cmd) as process:
+                    async for line in process.stdout:
+                        line = line.rstrip("\n")
+                        if line:
+                            payload = json.dumps({"type": "log", "line": line})
+                            yield f"data: {payload}\n\n"
+        except asyncio.CancelledError:
+            yield f"data: {json.dumps({'type': 'disconnected'})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(
+        log_generator(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

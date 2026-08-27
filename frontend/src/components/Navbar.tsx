@@ -4,7 +4,7 @@ import {
   Terminal, Server, FolderGit2, ListTodo, Users, Key, History,
   LogOut, User as UserIcon, Activity, CalendarClock,
   ShieldAlert, Sparkles, Cpu, X, Rocket, Layers,
-  ChevronRight
+  ChevronRight, Boxes
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { LLMProviderStatus } from '../types';
@@ -21,6 +21,7 @@ export type NavTab =
   | 'schedules'
   | 'policies-webhooks'
   | 'observability'
+  | 'containers'
   | 'users'
   | 'api-keys'
   | 'audit-logs';
@@ -134,6 +135,8 @@ export const Navbar: React.FC<NavbarProps> = ({
         return { label: 'Policies & Webhooks', icon: <ShieldAlert size={16} style={{ color: 'var(--status-warning)' }} /> };
       case 'observability':
         return { label: 'Observability', icon: <Activity size={16} style={{ color: 'var(--status-info)' }} /> };
+      case 'containers':
+        return { label: 'Containers & Logs', icon: <Boxes size={16} style={{ color: '#38bdf8' }} /> };
       case 'users':
         return { label: 'Users & Access', icon: <Users size={16} style={{ color: '#a78bfa' }} /> };
       case 'api-keys':

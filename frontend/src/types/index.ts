@@ -272,3 +272,23 @@ export interface LogStreamEvent {
   type?: 'init' | 'complete';
   executions?: any[];
 }
+
+export interface DockerContainer {
+  id: string;
+  name: string;
+  image: string;
+  status: string;
+  ports: string;
+  created_at: string;
+  running: boolean;
+}
+
+export interface ServerContainers {
+  server_id: number;
+  server_name: string;
+  hostname: string;
+  environment: string;
+  containers: DockerContainer[];
+  reachable: boolean;
+  error?: string;
+}

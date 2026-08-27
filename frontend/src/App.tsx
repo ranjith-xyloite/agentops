@@ -15,6 +15,8 @@ import { UserManagement } from './components/UserManagement';
 import { ApiKeys } from './components/ApiKeys';
 import { AuditLogs } from './components/AuditLogs';
 import { Observability } from './components/Observability';
+import { ContainerDashboard } from './components/ContainerDashboard';
+import { StandaloneContainerLogs } from './components/StandaloneContainerLogs';
 import { LoginModal } from './components/LoginModal';
 import { useAuth } from './context/AuthContext';
 
@@ -51,6 +53,27 @@ import {
 } from './services/api';
 
 export const App: React.FC = () => {
+  // Check if standalone container logs view is requested via URL
+  const urlParams = new URLSearchParams(window.location.search);
+  const isStandaloneLogView = urlParams.get('view') === 'container-logs';
+  const logServerId = urlParams.get('server_id') ? parseInt(urlParams.get('server_id')!, 10) : null;
+  const logContainerName = urlParams.get('container');
+  const logServerName = urlParams.get('server_name') || 'Server';
+  const logImageName = urlParams.get('image') || undefined;
+  const logContainerId = urlParams.get('container_id') || undefined;
+
+  if (isStandaloneLogView && logServerId && logContainerName) {
+    return (
+      <StandaloneContainerLogs
+        serverId={logServerId}
+        serverName={logServerName}
+        containerName={logContainerName}
+        imageName={logImageName}
+        containerId={logContainerId}
+      />
+    );
+  }
+
   const { isAuthenticated, role } = useAuth();
   const [activeTab, setActiveTab] = useState<NavTab>('console');
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
@@ -519,6 +542,10 @@ export const App: React.FC = () => {
 
           {activeTab === 'observability' && (
             <Observability />
+          )}
+
+          {activeTab === 'containers' && (
+            <ContainerDashboard />
           )}
 
           {activeTab === 'users' && role === 'admin' && (

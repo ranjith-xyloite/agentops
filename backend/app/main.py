@@ -189,8 +189,8 @@ app = FastAPI(
 # 1. Correlation ID Middleware (outermost for all requests)
 app.add_middleware(CorrelationIdMiddleware)
 
-# 2. Rate Limiting Middleware (180 requests/min general, 30 requests/min auth)
-app.add_middleware(RateLimitingMiddleware, general_limit=180, auth_limit=30, window_seconds=60)
+# 2. Rate Limiting Middleware (1200 requests/min general, 60 requests/min auth)
+app.add_middleware(RateLimitingMiddleware, general_limit=1200, auth_limit=60, window_seconds=60)
 
 # 3. Security Headers Middleware
 app.add_middleware(SecurityHeadersMiddleware)

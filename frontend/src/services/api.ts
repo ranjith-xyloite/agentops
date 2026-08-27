@@ -19,6 +19,7 @@ import {
   ServerTestResult,
   ServerHealthAuditResult,
   PreflightCheckResult,
+  ServerContainers,
 } from '../types';
 
 const API_BASE = '/api';
@@ -159,6 +160,15 @@ export async function revokeApiKeyApi(keyId: number): Promise<void> {
 export async function listAuditLogsApi(action?: string): Promise<AuditLog[]> {
   const url = action ? `${API_BASE}/audit-logs?action=${encodeURIComponent(action)}` : `${API_BASE}/audit-logs`;
   return request(url);
+}
+
+export async function getDeploymentAuditApi(params?: { tool?: string; status?: string; limit?: number }): Promise<any[]> {
+  const qs = new URLSearchParams();
+  if (params?.tool) qs.set('tool', params.tool);
+  if (params?.status) qs.set('status', params.status);
+  if (params?.limit) qs.set('limit', String(params.limit));
+  const query = qs.toString();
+  return request(`${API_BASE}/tasks/audit${query ? '?' + query : ''}`);
 }
 
 // =========================================================
@@ -441,6 +451,48 @@ export function subscribeToTaskEvents(
       onEvent(data);
     } catch (e) {
       console.warn('Failed to parse SSE event data:', event.data);
+    }
+  };
+
+  eventSource.onerror = (err) => {
+    if (onError) onError(err);
+    eventSource.close();
+  };
+
+  return () => {
+    eventSource.close();
+  };
+}
+
+export async function listContainersApi(serverId?: number): Promise<ServerContainers[]> {
+  const query = serverId ? `?server_id=${serverId}` : '';
+  return request(`${API_BASE}/containers${query}`);
+}
+
+export function subscribeToContainerLogs(
+  serverId: number,
+  containerName: string,
+  tail: number = 100,
+  onLog: (line: string) => void,
+  onStatus?: (status: { type: string; container?: string; server?: string; message?: string }) => void,
+  onError?: (err: any) => void
+): () => void {
+  const token = getAuthToken();
+  const base = `${API_BASE}/containers/${serverId}/${encodeURIComponent(containerName)}/logs?tail=${tail}`;
+  const url = token ? `${base}&token=${encodeURIComponent(token)}` : base;
+  const eventSource = new EventSource(url);
+
+  eventSource.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      if (data.type === 'log' && data.line !== undefined) {
+        onLog(data.line);
+      } else if (onStatus) {
+        onStatus(data);
+      }
+    } catch (e) {
+      // If raw text
+      if (event.data) onLog(event.data);
     }
   };
 

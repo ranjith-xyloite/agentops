@@ -80,7 +80,7 @@ class RateLimitingMiddleware(BaseHTTPMiddleware):
     In-memory sliding window rate limiter per client IP.
     Enforces stricter limits for authentication endpoints to prevent brute-force attacks.
     """
-    def __init__(self, app, general_limit: int = 120, auth_limit: int = 20, window_seconds: int = 60):
+    def __init__(self, app, general_limit: int = 1000, auth_limit: int = 60, window_seconds: int = 60):
         super().__init__(app)
         self.general_limit = general_limit
         self.auth_limit = auth_limit
@@ -98,12 +98,25 @@ class RateLimitingMiddleware(BaseHTTPMiddleware):
         return len(valid_ts)
 
     async def dispatch(self, request: Request, call_next):
-        # Exclude internal health and metrics checks from rate limiting
         path = request.url.path
-        if path.startswith("/api/health") or path.endswith("/metrics") or request.method == "OPTIONS":
+
+        # Exclude OPTIONS preflight, health checks, Prometheus metrics, and real-time SSE streams
+        if (
+            request.method == "OPTIONS"
+            or path.startswith("/api/health")
+            or path.endswith("/metrics")
+            or "/events" in path
+            or "/logs" in path
+        ):
             return await call_next(request)
 
-        client_ip = request.client.host if request.client else "unknown"
+        # Resolve real client IP behind reverse proxy / docker bridge
+        forwarded_for = request.headers.get("x-forwarded-for")
+        if forwarded_for:
+            client_ip = forwarded_for.split(",")[0].strip()
+        else:
+            client_ip = request.headers.get("x-real-ip") or (request.client.host if request.client else "unknown")
+
         now = time.time()
 
         # Check Auth specific endpoint limits

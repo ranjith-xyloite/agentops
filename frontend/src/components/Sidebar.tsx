@@ -20,6 +20,7 @@ import {
   ChevronDown,
   ChevronRight,
   Pin,
+  Boxes,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { NavTab } from './Navbar';
@@ -121,16 +122,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
           shortcut: '5',
         },
         {
+          id: 'containers',
+          label: 'Containers',
+          icon: <Boxes size={17} style={{ color: '#06b6d4' }} />,
+          shortcut: '6',
+        },
+        {
           id: 'projects',
           label: 'Projects',
           icon: <FolderGit2 size={17} style={{ color: '#fbbf24' }} />,
-          shortcut: '6',
+          shortcut: '7',
         },
         {
           id: 'schedules',
           label: 'Schedules',
           icon: <CalendarClock size={17} style={{ color: '#f472b6' }} />,
-          shortcut: '7',
+          shortcut: '8',
         },
       ],
     },

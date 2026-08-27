@@ -672,3 +672,113 @@ async def deploy_backend(task_id: int, parameters: Dict[str, Any]) -> Dict[str, 
             te.output = "\n".join(logs)
             te.completed_at = datetime.now(timezone.utc)
             await session.commit()
+
+
+async def get_server_metrics(task_id: int, parameters: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Collect live server metrics (CPU, memory, disk, uptime, containers) via SSH.
+
+    Parameters:
+        server: Target server name (optional — all servers if omitted)
+        environment: Target environment (optional)
+    """
+    async with AsyncSessionLocal() as session:
+        te = TaskExecution(
+            task_id=task_id,
+            tool_name="get_server_metrics",
+            parameters=parameters,
+            status="RUNNING",
+            started_at=datetime.now(timezone.utc)
+        )
+        session.add(te)
+        await session.flush()
+        await session.commit()
+
+        logs = []
+        async def emit(msg: str):
+            logs.append(msg)
+            te.output = "\n".join(logs)
+            await session.commit()
+            await task_broadcaster.broadcast(task_id, {
+                "task_id": task_id,
+                "execution_id": te.id,
+                "log": msg,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            })
+
+        try:
+            async with AsyncSessionLocal() as db_session:
+                servers = await _resolve_target_servers(db_session, parameters)
+
+            if not servers:
+                await emit("❌ No servers found matching the request.")
+                te.status = "FAILED"
+                await session.commit()
+                return {"status": "FAILED", "output": "No servers found"}
+
+            executor = get_ssh_executor()
+            all_metrics = []
+
+            for server in servers:
+                try:
+                    register_server_in_pool(server)
+                    host_key = f"server:{server.id}"
+                    await emit(f"📊 Collecting metrics from {server.name} ({server.hostname})...")
+
+                    metrics = {"server": server.name, "hostname": server.hostname, "environment": server.environment.name if server.environment else "unknown"}
+
+                    # CPU 1-min load average
+                    r = await executor.execute(host_key, "uptime | awk -F'load average:' '{print $2}' | awk '{print $1}' | sed 's/,//'", timeout=10)
+                    metrics["cpu_load_1m"] = float(r.stdout.strip()) if r.exit_code == 0 and r.stdout.strip() else None
+
+                    # Memory used %
+                    r = await executor.execute(host_key, "free | grep Mem | awk '{printf \"%.1f\", $3/$2*100}'", timeout=10)
+                    metrics["memory_used_pct"] = float(r.stdout.strip()) if r.exit_code == 0 and r.stdout.strip() else None
+
+                    # Disk used % on /
+                    r = await executor.execute(host_key, "df -h / | tail -1 | awk '{print $5}' | sed 's/%//'", timeout=10)
+                    metrics["disk_used_pct"] = int(r.stdout.strip()) if r.exit_code == 0 and r.stdout.strip() else None
+
+                    # Uptime human-readable
+                    r = await executor.execute(host_key, "uptime -p 2>/dev/null || uptime", timeout=10)
+                    metrics["uptime"] = r.stdout.strip() if r.exit_code == 0 else "unknown"
+
+                    # Running containers
+                    r = await executor.execute(host_key, "docker ps --format '{{.Names}}|{{.Status}}|{{.Image}}' 2>/dev/null", timeout=10)
+                    if r.exit_code == 0 and r.stdout.strip():
+                        containers = []
+                        for line in r.stdout.strip().splitlines():
+                            parts = line.split("|")
+                            if len(parts) >= 3:
+                                containers.append({"name": parts[0], "status": parts[1], "image": parts[2]})
+                        metrics["containers"] = containers
+                        metrics["container_count"] = len(containers)
+                    else:
+                        metrics["containers"] = []
+                        metrics["container_count"] = 0
+
+                    all_metrics.append(metrics)
+                    await emit(
+                        f"  ✅ {server.name}: CPU={metrics['cpu_load_1m']}, "
+                        f"MEM={metrics['memory_used_pct']}%, "
+                        f"DISK={metrics['disk_used_pct']}%, "
+                        f"Containers={metrics['container_count']}"
+                    )
+
+                except Exception as ex:
+                    await emit(f"  ❌ {server.name}: {str(ex)}")
+                    all_metrics.append({"server": server.name, "error": str(ex)})
+
+            te.status = "SUCCESS"
+            te.output = json.dumps({"metrics": all_metrics}, indent=2)
+            await session.commit()
+            return {"status": "SUCCESS", "output": te.output, "metrics": all_metrics}
+
+        except Exception as e:
+            te.status = "FAILED"
+            te.error = str(e)
+            await session.commit()
+            return {"status": "FAILED", "output": str(e)}
+        finally:
+            te.completed_at = datetime.now(timezone.utc)
+            await session.commit()
