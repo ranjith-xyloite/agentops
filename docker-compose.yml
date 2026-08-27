@@ -3,6 +3,12 @@ services:
     image: postgres:15-alpine
     container_name: agentops-postgres
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+        compress: "true"
     environment:
       POSTGRES_USER: agentops
       POSTGRES_PASSWORD: agentops
@@ -23,6 +29,12 @@ services:
       dockerfile: Dockerfile
     container_name: agentops-backend
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+        compress: "true"
     depends_on:
       postgres:
         condition: service_healthy
@@ -38,8 +50,6 @@ services:
       - GIT_TIMEOUT=1800
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    ports:
-      - "8000:8000"
 
   frontend:
     build:
@@ -47,6 +57,12 @@ services:
       dockerfile: Dockerfile
     container_name: agentops-frontend
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+        compress: "true"
     depends_on:
       - backend
     ports:
@@ -57,10 +73,14 @@ services:
     image: prom/prometheus:v2.45.0
     container_name: agentops-prometheus
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+        compress: "true"
     volumes:
       - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-    ports:
-      - "9090:9090"
     depends_on:
       - backend
 

@@ -66,65 +66,6 @@ async def init_db_and_seed():
                 session.add(Environment(name=env_name, description=env_desc))
         await session.commit()
 
-        # Seed Projects if empty
-        res = await session.execute(select(Project))
-        proj = res.scalars().first()
-        if not proj:
-            res_uat = await session.execute(select(Environment).where(Environment.name == "uat"))
-            env_uat = res_uat.scalars().first()
-            res_prod = await session.execute(select(Environment).where(Environment.name == "prod"))
-            env_prod = res_prod.scalars().first()
-
-            # Seed servers
-            s1 = Server(
-                name="uat-server-01",
-                hostname="uat01.internal",
-                port=22,
-                username="deploy",
-                environment_id=env_uat.id,
-                authentication_method="ssh_key"
-            )
-            s2 = Server(
-                name="prod-server-01",
-                hostname="prod01.internal",
-                port=22,
-                username="deploy",
-                environment_id=env_prod.id,
-                authentication_method="ssh_key"
-            )
-            session.add_all([s1, s2])
-            await session.commit()
-
-            # Seed project
-            proj = Project(
-                name="mom",
-                description="MOM Core Management Platform",
-                repository_url="https://github.com/example/mom.git"
-            )
-            session.add(proj)
-            await session.commit()
-
-            # Seed deployments
-            dep_fe = ProjectDeployment(
-                project_id=proj.id,
-                environment_id=env_uat.id,
-                component="frontend",
-                repository_path="/opt/mom/frontend",
-                deployment_script="./deploy_frontend.sh",
-                health_check_url="http://localhost:3000"
-            )
-            dep_be = ProjectDeployment(
-                project_id=proj.id,
-                environment_id=env_uat.id,
-                component="backend",
-                repository_path="/opt/mom/backend",
-                deployment_script="./deploy_backend.sh",
-                health_check_url="http://localhost:8000/health"
-            )
-            session.add_all([dep_fe, dep_be])
-            await session.commit()
-            logger.info("Seeded initial baseline infrastructure.")
-
         # Seed Users if empty
         user_res = await session.execute(select(User))
         if not user_res.scalars().first():
@@ -151,14 +92,6 @@ async def init_db_and_seed():
             )
             session.add_all([u_admin, u_operator, u_viewer])
             await session.commit()
-
-            # Assign operator and viewer to 'mom' project
-            if proj:
-                session.add_all([
-                    ProjectMember(user_id=u_operator.id, project_id=proj.id),
-                    ProjectMember(user_id=u_viewer.id, project_id=proj.id),
-                ])
-                await session.commit()
             logger.info("Seeded initial RBAC users: admin, operator, viewer.")
 
 
