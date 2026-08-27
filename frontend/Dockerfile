@@ -6,7 +6,7 @@ COPY package*.json ./
 RUN npm install
 
 COPY . .
-RUN npm run build
+RUN chmod -R +x node_modules/.bin && npm run build
 
 # Stage 2: Serve with Nginx
 FROM nginx:alpine

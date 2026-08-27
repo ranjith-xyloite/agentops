@@ -50,7 +50,8 @@ services:
     depends_on:
       - backend
     ports:
-      - "3000:80"
+      # Exposed on designated port 9443:
+      - "9443:80"
 
   prometheus:
     image: prom/prometheus:v2.45.0
