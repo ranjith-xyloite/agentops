@@ -219,4 +219,62 @@ async def test_server_password_and_preflight_check(admin_headers, operator_heade
         assert upd_data["has_password"] is True
 
 
+@pytest.mark.asyncio
+async def test_dual_login_username_and_email(admin_headers):
+    transport = ASGITransport(app=api_test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # 1. Login with Username
+        res_user = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123"}
+        )
+        assert res_user.status_code == 200
+        assert "access_token" in res_user.json()
+        assert res_user.json()["user"]["username"] == "admin"
 
+        # 2. Login with Email
+        res_email = await client.post(
+            "/api/auth/login",
+            json={"username": "admin@test.local", "password": "admin123"}
+        )
+        assert res_email.status_code == 200
+        assert "access_token" in res_email.json()
+        assert res_email.json()["user"]["email"] == "admin@test.local"
+
+
+@pytest.mark.asyncio
+async def test_container_tagging_crud(admin_headers, operator_headers):
+    transport = ASGITransport(app=api_test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # 1. Add tag as Admin
+        res_add = await client.post(
+            "/api/containers/1/payment-service-container/tags",
+            json={"tag": "payments"},
+            headers=admin_headers
+        )
+        assert res_add.status_code == 200
+        assert res_add.json()["status"] == "ok"
+
+        # 2. Add duplicate tag (idempotent)
+        res_dup = await client.post(
+            "/api/containers/1/payment-service-container/tags",
+            json={"tag": "payments"},
+            headers=admin_headers
+        )
+        assert res_dup.status_code == 200
+
+        # 3. Viewer/Operator cannot add tag
+        res_unauth = await client.post(
+            "/api/containers/1/payment-service-container/tags",
+            json={"tag": "unauthorized-tag"},
+            headers=operator_headers
+        )
+        assert res_unauth.status_code == 403
+
+        # 4. Remove tag as Admin
+        res_del = await client.delete(
+            "/api/containers/1/payment-service-container/tags/payments",
+            headers=admin_headers
+        )
+        assert res_del.status_code == 200
+        assert res_del.json()["status"] == "ok"

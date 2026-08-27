@@ -1,7 +1,7 @@
 import json
 import asyncio
 from datetime import datetime, timezone, timedelta
-from typing import List, Optional
+from typing import List, Optional, Dict
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,7 +22,8 @@ from app.schemas import (
     ProjectMemberAssign, APIKeyCreate, APIKeyOut, APIKeyCreatedOut, AuditLogOut,
     ScheduledTaskCreate, ScheduledTaskOut, WebhookSubscriptionCreate, WebhookSubscriptionOut,
     WebhookTestRequest, PolicyRuleCreate, PolicyRuleOut, LLMProviderConfig, LLMProviderOut,
-    ServerTestConnectionRequest, ServerTestConnectionResponse, ServerHealthAuditResponse, PreflightCheckRequest, PreflightCheckResponse
+    ServerTestConnectionRequest, ServerTestConnectionResponse, ServerHealthAuditResponse, PreflightCheckRequest, PreflightCheckResponse,
+    ContainerTagRequest
 )
 from app.llm.multillm import multi_llm
 from app.services.webhook_service import webhook_dispatcher
@@ -175,7 +176,7 @@ async def login(
     request: Request,
     db: AsyncSession = Depends(get_session)
 ):
-    stmt = select(User).where(User.username == payload.username)
+    stmt = select(User).where((User.username == payload.username) | (User.email == payload.username))
     res = await db.execute(stmt)
     user = res.scalar_one_or_none()
 
@@ -315,8 +316,19 @@ async def update_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    if payload.username:
+        # Check uniqueness if username is being changed
+        if payload.username != user.username:
+            existing = await db.execute(select(User).where(User.username == payload.username))
+            if existing.scalar_one_or_none():
+                raise HTTPException(status_code=400, detail="Username already in use")
+            user.username = payload.username
     if payload.email:
-        user.email = payload.email
+        if payload.email != user.email:
+            existing_email = await db.execute(select(User).where(User.email == payload.email))
+            if existing_email.scalar_one_or_none():
+                raise HTTPException(status_code=400, detail="Email already in use")
+            user.email = payload.email
     if payload.role:
         user.role = UserRole(payload.role)
     if payload.is_active is not None:
@@ -737,8 +749,20 @@ async def list_all_containers(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session)
 ):
-    """List all Docker containers from all (or a specific) registered server(s) via SSH."""
+    """List all Docker containers from all (or a specific) registered server(s) via SSH with custom tags."""
     from app.core.ssh import get_ssh_executor, register_server_in_pool
+    from app.models.models import ContainerTag
+
+    # Fetch all stored tags
+    tags_res = await db.execute(select(ContainerTag))
+    all_tags = tags_res.scalars().all()
+    tag_map: Dict[tuple, List[str]] = {}
+    for t in all_tags:
+        key = (t.server_id, t.container_name)
+        if key not in tag_map:
+            tag_map[key] = []
+        if t.tag not in tag_map[key]:
+            tag_map[key].append(t.tag)
 
     stmt = select(Server)
     if server_id:
@@ -760,15 +784,17 @@ async def list_all_containers(
                 for line in r.stdout.strip().splitlines():
                     parts = line.split("|")
                     if len(parts) >= 5:
+                        c_name = parts[1]
                         running = "up" in parts[3].lower()
                         containers.append({
                             "id": parts[0][:12],
-                            "name": parts[1],
+                            "name": c_name,
                             "image": parts[2],
                             "status": parts[3],
                             "ports": parts[4],
                             "created_at": parts[5] if len(parts) > 5 else "",
                             "running": running,
+                            "tags": tag_map.get((server.id, c_name), []),
                         })
             result.append({
                 "server_id": server.id,
@@ -789,6 +815,61 @@ async def list_all_containers(
                 "error": str(e),
             })
     return result
+
+
+@router.post("/containers/{server_id}/{container_name}/tags")
+async def add_container_tag(
+    server_id: int,
+    container_name: str,
+    payload: ContainerTagRequest,
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
+    db: AsyncSession = Depends(get_session)
+):
+    """Add a category/project tag to a container (Admin only)."""
+    from app.models.models import ContainerTag
+
+    tag_clean = payload.tag.strip()
+    if not tag_clean:
+        raise HTTPException(status_code=400, detail="Tag cannot be empty")
+
+    # Check if tag already exists for this container
+    existing = await db.execute(
+        select(ContainerTag).where(
+            ContainerTag.server_id == server_id,
+            ContainerTag.container_name == container_name,
+            ContainerTag.tag == tag_clean
+        )
+    )
+    if existing.scalar_one_or_none():
+        return {"status": "ok", "message": "Tag already exists"}
+
+    new_tag = ContainerTag(server_id=server_id, container_name=container_name, tag=tag_clean)
+    db.add(new_tag)
+    await db.commit()
+    return {"status": "ok", "tag": tag_clean}
+
+
+@router.delete("/containers/{server_id}/{container_name}/tags/{tag}")
+async def remove_container_tag(
+    server_id: int,
+    container_name: str,
+    tag: str,
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
+    db: AsyncSession = Depends(get_session)
+):
+    """Remove a tag from a container (Admin only)."""
+    from app.models.models import ContainerTag
+
+    await db.execute(
+        delete(ContainerTag).where(
+            ContainerTag.server_id == server_id,
+            ContainerTag.container_name == container_name,
+            ContainerTag.tag == tag
+        )
+    )
+    await db.commit()
+    return {"status": "ok", "deleted_tag": tag}
+
 
 
 @router.get("/containers/{server_id}/{container_name}/logs")

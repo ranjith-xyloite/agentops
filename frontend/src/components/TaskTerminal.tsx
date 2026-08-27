@@ -251,18 +251,6 @@ export const TaskTerminal: React.FC<TaskTerminalProps> = ({
 
         {/* Action Controls */}
         <div className="panel-actions" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {effectiveStatus === 'AWAITING_CONFIRMATION' && activeTaskId && onConfirmTask && (
-            <button
-              className="btn btn-primary btn-sm"
-              style={{ background: '#10b981', color: '#0f172a', fontWeight: 700, border: 'none' }}
-              onClick={() => onConfirmTask(activeTaskId)}
-              title="Confirm and execute this deployment on the remote server"
-            >
-              <Play size={13} fill="#0f172a" />
-              Confirm & Execute
-            </button>
-          )}
-
           {effectiveStatus === 'RUNNING' && activeTaskId && (
             <button
               className="btn btn-danger btn-sm"

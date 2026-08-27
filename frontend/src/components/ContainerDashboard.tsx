@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Boxes,
   Server as ServerIcon,
@@ -18,10 +18,14 @@ import {
   AlertCircle,
   Clock,
   Radio,
-  ExternalLink
+  ExternalLink,
+  Tag,
+  Plus,
+  Hash
 } from 'lucide-react';
 import { ServerContainers, DockerContainer } from '../types';
-import { listContainersApi, subscribeToContainerLogs } from '../services/api';
+import { listContainersApi, subscribeToContainerLogs, addContainerTagApi, removeContainerTagApi } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 interface SelectedContainerForLogs {
   serverId: number;
@@ -30,14 +34,23 @@ interface SelectedContainerForLogs {
 }
 
 export const ContainerDashboard: React.FC = () => {
+  const { role } = useAuth();
+  const isAdmin = role === 'admin';
+
   const [serversData, setServersData] = useState<ServerContainers[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [lastRefreshed, setLastRefreshed] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedServerFilter, setSelectedServerFilter] = useState<string>('all');
+  const [selectedTagFilter, setSelectedTagFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'running' | 'stopped'>('all');
   const [autoRefresh, setAutoRefresh] = useState<boolean>(false);
+
+  // Inline Tag Input State
+  const [tagInputTarget, setTagInputTarget] = useState<{ serverId: number; containerName: string } | null>(null);
+  const [newTagText, setNewTagText] = useState<string>('');
+  const [isTagSubmitting, setIsTagSubmitting] = useState<boolean>(false);
 
   // Live Logs Modal State
   const [logModalTarget, setLogModalTarget] = useState<SelectedContainerForLogs | null>(null);
@@ -52,8 +65,9 @@ export const ContainerDashboard: React.FC = () => {
   const logEndRef = useRef<HTMLDivElement>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
   const unsubscribeLogRef = useRef<(() => void) | null>(null);
+  const tagInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch containers list (always fetch all servers so dropdown options and stats are preserved)
+  // Fetch containers list
   const fetchContainers = async () => {
     setIsLoading(true);
     setError(null);
@@ -80,6 +94,76 @@ export const ContainerDashboard: React.FC = () => {
     }, 10000);
     return () => clearInterval(interval);
   }, [autoRefresh]);
+
+  // Focus tag input when opened
+  useEffect(() => {
+    if (tagInputTarget && tagInputRef.current) {
+      tagInputRef.current.focus();
+    }
+  }, [tagInputTarget]);
+
+  // Extract all unique tags across fleet
+  const allAvailableTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    serversData.forEach((s) => {
+      (s.containers || []).forEach((c) => {
+        (c.tags || []).forEach((t) => tagSet.add(t));
+      });
+    });
+    return Array.from(tagSet).sort();
+  }, [serversData]);
+
+  // Add Tag Handler (Admin only)
+  const handleAddTag = async (serverId: number, containerName: string) => {
+    if (!newTagText.trim()) return;
+    setIsTagSubmitting(true);
+    const tagClean = newTagText.trim();
+    try {
+      await addContainerTagApi(serverId, containerName, tagClean);
+      // Optimistically update state
+      setServersData((prev) =>
+        prev.map((s) => {
+          if (s.server_id !== serverId) return s;
+          return {
+            ...s,
+            containers: (s.containers || []).map((c) => {
+              if (c.name !== containerName) return c;
+              const currentTags = c.tags || [];
+              if (currentTags.includes(tagClean)) return c;
+              return { ...c, tags: [...currentTags, tagClean] };
+            }),
+          };
+        })
+      );
+      setNewTagText('');
+      setTagInputTarget(null);
+    } catch (err: any) {
+      alert(`Failed to add tag: ${err?.message || err}`);
+    } finally {
+      setIsTagSubmitting(false);
+    }
+  };
+
+  // Remove Tag Handler (Admin only)
+  const handleRemoveTag = async (serverId: number, containerName: string, tag: string) => {
+    try {
+      await removeContainerTagApi(serverId, containerName, tag);
+      setServersData((prev) =>
+        prev.map((s) => {
+          if (s.server_id !== serverId) return s;
+          return {
+            ...s,
+            containers: (s.containers || []).map((c) => {
+              if (c.name !== containerName) return c;
+              return { ...c, tags: (c.tags || []).filter((t) => t !== tag) };
+            }),
+          };
+        })
+      );
+    } catch (err: any) {
+      alert(`Failed to remove tag: ${err?.message || err}`);
+    }
+  };
 
   // Handle opening live log modal
   const handleOpenLogs = (serverId: number, serverName: string, container: DockerContainer) => {
@@ -180,7 +264,7 @@ export const ContainerDashboard: React.FC = () => {
     return String(s.server_id) === selectedServerFilter;
   });
 
-  // Calculate dynamic contextual metrics (reflecting selected server + search query)
+  // Calculate dynamic contextual metrics (reflecting selected server + tag + search query)
   let contextualContainers = 0;
   let contextualRunning = 0;
   let contextualStopped = 0;
@@ -189,13 +273,16 @@ export const ContainerDashboard: React.FC = () => {
   filteredServers.forEach((s) => {
     if (s.reachable) contextualReachableNodes++;
     (s.containers || []).forEach((c) => {
+      const matchesTag = selectedTagFilter === 'all' || (c.tags && c.tags.includes(selectedTagFilter));
+      const q = searchQuery.toLowerCase();
       const matchesSearch = !searchQuery || (
-        c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.image.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.ports.toLowerCase().includes(searchQuery.toLowerCase())
+        c.name.toLowerCase().includes(q) ||
+        c.image.toLowerCase().includes(q) ||
+        c.id.toLowerCase().includes(q) ||
+        c.ports.toLowerCase().includes(q) ||
+        (c.tags && c.tags.some(t => t.toLowerCase().includes(q)))
       );
-      if (matchesSearch) {
+      if (matchesTag && matchesSearch) {
         contextualContainers++;
         if (c.running) contextualRunning++;
         else contextualStopped++;
@@ -239,7 +326,7 @@ export const ContainerDashboard: React.FC = () => {
                 </span>
               </div>
               <p style={{ color: 'var(--text-muted)', fontSize: '13px', margin: '4px 0 0 0' }}>
-                Multi-server container inventory with real-time SSE streaming logs directly over SSH
+                Multi-server container inventory with custom categorization tags and real-time SSE streaming logs
                 {lastRefreshed && <span> • Updated {lastRefreshed}</span>}
               </p>
             </div>
@@ -305,7 +392,7 @@ export const ContainerDashboard: React.FC = () => {
           >
             <div>
               <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 500 }}>
-                {selectedServerFilter !== 'all' ? 'Server Containers' : 'Total Containers'}
+                {selectedServerFilter !== 'all' || selectedTagFilter !== 'all' ? 'Filtered Containers' : 'Total Containers'}
               </div>
               <div style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text-primary)', marginTop: 2 }}>
                 {contextualContainers}
@@ -396,16 +483,16 @@ export const ContainerDashboard: React.FC = () => {
             borderTop: '1px solid var(--border-color)',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 260 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 260, flexWrap: 'wrap' }}>
             {/* Search Input */}
-            <div className="search-input-wrapper" style={{ position: 'relative', flex: 1, maxWidth: 360 }}>
+            <div className="search-input-wrapper" style={{ position: 'relative', flex: 1, minWidth: 220, maxWidth: 360 }}>
               <Search
                 size={15}
                 style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}
               />
               <input
                 type="text"
-                placeholder="Search container name, image, ports..."
+                placeholder="Search container, tag, image, port..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 style={{
@@ -438,7 +525,7 @@ export const ContainerDashboard: React.FC = () => {
               )}
             </div>
 
-            {/* Server Selector Dropdown (Always contains all servers) */}
+            {/* Server Selector Dropdown */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <ServerIcon size={14} style={{ color: 'var(--text-muted)' }} />
               <select
@@ -464,6 +551,44 @@ export const ContainerDashboard: React.FC = () => {
                 ))}
               </select>
             </div>
+
+            {/* Tag / Category Filter Dropdown */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Tag size={14} style={{ color: 'var(--accent-purple)' }} />
+              <select
+                value={selectedTagFilter}
+                onChange={(e) => setSelectedTagFilter(e.target.value)}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  fontSize: '13px',
+                  background: 'var(--bg-card)',
+                  border: selectedTagFilter !== 'all' ? '1px solid var(--accent-purple)' : '1px solid var(--border-color)',
+                  color: selectedTagFilter !== 'all' ? 'var(--accent-purple)' : 'var(--text-primary)',
+                  outline: 'none',
+                  cursor: 'pointer',
+                  fontWeight: 500,
+                }}
+              >
+                <option value="all">All Tags ({allAvailableTags.length})</option>
+                {allAvailableTags.map((tag) => (
+                  <option key={tag} value={tag}>
+                    🏷️ {tag}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Clear Tag filter if set */}
+            {selectedTagFilter !== 'all' && (
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={() => setSelectedTagFilter('all')}
+                style={{ fontSize: '11px', padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 4 }}
+              >
+                <X size={12} /> Clear Tag
+              </button>
+            )}
           </div>
 
           {/* Status Tabs */}
@@ -503,6 +628,56 @@ export const ContainerDashboard: React.FC = () => {
             ))}
           </div>
         </div>
+
+        {/* Quick Tag Chips Row (if any tags exist) */}
+        {allAvailableTags.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 12 }}>
+            <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Hash size={12} /> Categories:
+            </span>
+            <button
+              onClick={() => setSelectedTagFilter('all')}
+              style={{
+                fontSize: '11px',
+                padding: '2px 8px',
+                borderRadius: 12,
+                border: '1px solid',
+                borderColor: selectedTagFilter === 'all' ? 'var(--accent-blue)' : 'var(--border-subtle)',
+                background: selectedTagFilter === 'all' ? 'rgba(56, 189, 248, 0.2)' : 'var(--bg-tertiary)',
+                color: selectedTagFilter === 'all' ? 'var(--accent-blue)' : 'var(--text-secondary)',
+                cursor: 'pointer',
+                fontWeight: selectedTagFilter === 'all' ? 700 : 500,
+              }}
+            >
+              All
+            </button>
+            {allAvailableTags.map((tag) => {
+              const isSelected = selectedTagFilter === tag;
+              return (
+                <button
+                  key={tag}
+                  onClick={() => setSelectedTagFilter(isSelected ? 'all' : tag)}
+                  style={{
+                    fontSize: '11px',
+                    padding: '2px 8px',
+                    borderRadius: 12,
+                    border: '1px solid',
+                    borderColor: isSelected ? 'var(--accent-purple)' : 'rgba(168, 85, 247, 0.25)',
+                    background: isSelected ? 'rgba(168, 85, 247, 0.3)' : 'rgba(168, 85, 247, 0.08)',
+                    color: isSelected ? '#e9d5ff' : '#c084fc',
+                    cursor: 'pointer',
+                    fontWeight: isSelected ? 700 : 500,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 3,
+                  }}
+                >
+                  <span>#{tag}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Error alert if any */}
@@ -537,13 +712,15 @@ export const ContainerDashboard: React.FC = () => {
           const visibleContainers = (server.containers || []).filter((c) => {
             if (statusFilter === 'running' && !c.running) return false;
             if (statusFilter === 'stopped' && c.running) return false;
+            if (selectedTagFilter !== 'all' && (!c.tags || !c.tags.includes(selectedTagFilter))) return false;
             if (searchQuery) {
               const q = searchQuery.toLowerCase();
               return (
                 c.name.toLowerCase().includes(q) ||
                 c.image.toLowerCase().includes(q) ||
                 c.id.toLowerCase().includes(q) ||
-                c.ports.toLowerCase().includes(q)
+                c.ports.toLowerCase().includes(q) ||
+                (c.tags && c.tags.some(t => t.toLowerCase().includes(q)))
               );
             }
             return true;
@@ -607,7 +784,7 @@ export const ContainerDashboard: React.FC = () => {
                 {visibleContainers.length === 0 ? (
                   <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
                     {server.reachable
-                      ? searchQuery || statusFilter !== 'all'
+                      ? searchQuery || statusFilter !== 'all' || selectedTagFilter !== 'all'
                         ? 'No containers match the current filter on this server.'
                         : 'No Docker containers found running or stopped on this server.'
                       : 'Unable to connect to server via SSH.'}
@@ -621,6 +798,8 @@ export const ContainerDashboard: React.FC = () => {
                     }}
                   >
                     {visibleContainers.map((container) => {
+                      const isAddingTagToThis = tagInputTarget?.serverId === server.server_id && tagInputTarget?.containerName === container.name;
+
                       return (
                         <div
                           key={container.id + container.name}
@@ -691,6 +870,135 @@ export const ContainerDashboard: React.FC = () => {
                                 {copiedText === container.id ? <Check size={11} color="#34d399" /> : <Copy size={11} />}
                                 {container.id}
                               </button>
+                            </div>
+
+                            {/* Tags Section */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
+                              {(container.tags || []).map((t) => (
+                                <span
+                                  key={t}
+                                  style={{
+                                    fontSize: '11px',
+                                    padding: '2px 8px',
+                                    borderRadius: 6,
+                                    background: 'rgba(168, 85, 247, 0.15)',
+                                    border: '1px solid rgba(168, 85, 247, 0.35)',
+                                    color: '#c084fc',
+                                    fontWeight: 600,
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 4,
+                                  }}
+                                >
+                                  <span
+                                    style={{ cursor: 'pointer' }}
+                                    onClick={() => setSelectedTagFilter(t)}
+                                    title={`Filter by tag: ${t}`}
+                                  >
+                                    🏷️ {t}
+                                  </span>
+                                  {isAdmin && (
+                                    <button
+                                      onClick={() => handleRemoveTag(server.server_id, container.name, t)}
+                                      title="Remove tag"
+                                      style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        color: 'rgba(255, 255, 255, 0.5)',
+                                        cursor: 'pointer',
+                                        padding: 0,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                      }}
+                                    >
+                                      <X size={11} />
+                                    </button>
+                                  )}
+                                </span>
+                              ))}
+
+                              {/* Admin Add Tag Button / Input */}
+                              {isAdmin && !isAddingTagToThis && (
+                                <button
+                                  onClick={() => {
+                                    setTagInputTarget({ serverId: server.server_id, containerName: container.name });
+                                    setNewTagText('');
+                                  }}
+                                  style={{
+                                    fontSize: '10.5px',
+                                    padding: '2px 7px',
+                                    borderRadius: 6,
+                                    background: 'rgba(255, 255, 255, 0.05)',
+                                    border: '1px dashed rgba(255, 255, 255, 0.25)',
+                                    color: '#8b949e',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 3,
+                                  }}
+                                  title="Add project or category tag"
+                                >
+                                  <Plus size={11} /> Tag
+                                </button>
+                              )}
+
+                              {isAdmin && isAddingTagToThis && (
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                  <input
+                                    ref={tagInputRef}
+                                    type="text"
+                                    placeholder="e.g. backend, payment"
+                                    value={newTagText}
+                                    onChange={(e) => setNewTagText(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        handleAddTag(server.server_id, container.name);
+                                      } else if (e.key === 'Escape') {
+                                        setTagInputTarget(null);
+                                      }
+                                    }}
+                                    style={{
+                                      padding: '2px 6px',
+                                      fontSize: '11px',
+                                      borderRadius: 4,
+                                      background: '#0d1117',
+                                      border: '1px solid var(--accent-purple)',
+                                      color: '#f0f6fc',
+                                      outline: 'none',
+                                      width: '120px',
+                                    }}
+                                  />
+                                  <button
+                                    onClick={() => handleAddTag(server.server_id, container.name)}
+                                    disabled={isTagSubmitting || !newTagText.trim()}
+                                    style={{
+                                      background: 'var(--accent-purple)',
+                                      border: 'none',
+                                      borderRadius: 4,
+                                      color: '#fff',
+                                      padding: '2px 6px',
+                                      fontSize: '10.5px',
+                                      cursor: 'pointer',
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    Add
+                                  </button>
+                                  <button
+                                    onClick={() => setTagInputTarget(null)}
+                                    style={{
+                                      background: 'none',
+                                      border: 'none',
+                                      color: '#8b949e',
+                                      cursor: 'pointer',
+                                      padding: '2px',
+                                    }}
+                                  >
+                                    <X size={12} />
+                                  </button>
+                                </div>
+                              )}
                             </div>
 
                             {/* Image name */}
@@ -881,7 +1189,7 @@ export const ContainerDashboard: React.FC = () => {
                     textTransform: 'uppercase',
                   }}
                 >
-                  <Radio size={12} className={streamStatus === 'live' ? 'pulse-animation' : ''} />
+                  <Radio size={12} className={streamStatus === 'live' ? 'pulse-live' : ''} />
                   <span>{streamStatus === 'live' ? 'LIVE STREAM' : streamStatus}</span>
                 </div>
 
@@ -891,150 +1199,200 @@ export const ContainerDashboard: React.FC = () => {
                       {logModalTarget.container.name}
                     </span>
                     <span style={{ fontSize: '12px', color: '#8b949e' }}>
-                      on {logModalTarget.serverName}
+                      ({logModalTarget.serverName})
                     </span>
                   </div>
-                  <div style={{ fontSize: '11px', color: '#8b949e', fontFamily: 'monospace' }}>
-                    Image: {logModalTarget.container.image} | ID: {logModalTarget.container.id}
+                  <div style={{ fontSize: '11px', color: '#6e7681', fontFamily: 'monospace' }}>
+                    {logModalTarget.container.image} • ID: {logModalTarget.container.id}
                   </div>
                 </div>
               </div>
 
               {/* Header Controls */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {/* Search within logs */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                {/* Popout New Tab */}
+                <button
+                  onClick={() => openInNewTab(logModalTarget.serverId, logModalTarget.serverName, logModalTarget.container)}
+                  title="Open live logs in new browser tab"
+                  style={{
+                    background: 'rgba(56, 189, 248, 0.12)',
+                    border: '1px solid rgba(56, 189, 248, 0.3)',
+                    color: '#38bdf8',
+                    padding: '5px 10px',
+                    borderRadius: 6,
+                    fontSize: '12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                  }}
+                >
+                  <ExternalLink size={13} />
+                  <span>Open in Tab</span>
+                </button>
+
+                {/* Tail Count Selector */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '12px', color: '#8b949e' }}>
+                  <Clock size={13} />
+                  <select
+                    value={tailCount}
+                    onChange={(e) => setTailCount(Number(e.target.value))}
+                    style={{
+                      background: '#0d1117',
+                      border: '1px solid #30363d',
+                      color: '#f0f6fc',
+                      padding: '4px 8px',
+                      borderRadius: 6,
+                      fontSize: '12px',
+                      outline: 'none',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <option value={50}>Last 50 lines</option>
+                    <option value={100}>Last 100 lines</option>
+                    <option value={250}>Last 250 lines</option>
+                    <option value={500}>Last 500 lines</option>
+                    <option value={1000}>Last 1000 lines</option>
+                  </select>
+                </div>
+
+                {/* Log Search */}
                 <div style={{ position: 'relative' }}>
-                  <Search
-                    size={13}
-                    style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: '#8b949e' }}
-                  />
+                  <Search size={13} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: '#8b949e' }} />
                   <input
                     type="text"
                     placeholder="Filter logs..."
                     value={logFilterQuery}
                     onChange={(e) => setLogFilterQuery(e.target.value)}
                     style={{
-                      padding: '5px 8px 5px 28px',
-                      borderRadius: 6,
-                      fontSize: '12px',
                       background: '#0d1117',
                       border: '1px solid #30363d',
-                      color: '#c9d1d9',
-                      width: 160,
+                      color: '#f0f6fc',
+                      padding: '4px 8px 4px 26px',
+                      borderRadius: 6,
+                      fontSize: '12px',
+                      width: 140,
                       outline: 'none',
                     }}
                   />
+                  {logFilterQuery && (
+                    <button
+                      onClick={() => setLogFilterQuery('')}
+                      style={{
+                        position: 'absolute',
+                        right: 6,
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'none',
+                        border: 'none',
+                        color: '#8b949e',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
                 </div>
 
-                {/* Tail line count */}
-                <select
-                  value={tailCount}
-                  onChange={(e) => setTailCount(parseInt(e.target.value, 10))}
-                  style={{
-                    padding: '5px 8px',
-                    borderRadius: 6,
-                    fontSize: '12px',
-                    background: '#0d1117',
-                    border: '1px solid #30363d',
-                    color: '#c9d1d9',
-                    outline: 'none',
-                    cursor: 'pointer',
-                  }}
-                  title="Number of initial tail lines"
-                >
-                  <option value={50}>50 lines</option>
-                  <option value={100}>100 lines</option>
-                  <option value={250}>250 lines</option>
-                  <option value={500}>500 lines</option>
-                </select>
-
-                {/* Auto-scroll toggle */}
+                {/* Auto Scroll toggle */}
                 <button
                   onClick={() => setAutoScroll(!autoScroll)}
+                  title={autoScroll ? 'Auto-scroll is ON' : 'Auto-scroll is OFF'}
                   style={{
-                    padding: '5px 10px',
+                    background: autoScroll ? 'rgba(52, 211, 153, 0.15)' : '#0d1117',
+                    border: autoScroll ? '1px solid rgba(52, 211, 153, 0.3)' : '1px solid #30363d',
+                    color: autoScroll ? '#34d399' : '#8b949e',
+                    padding: '5px 9px',
                     borderRadius: 6,
-                    fontSize: '12px',
-                    background: autoScroll ? 'rgba(56, 189, 248, 0.2)' : '#0d1117',
-                    border: '1px solid #30363d',
-                    color: autoScroll ? '#38bdf8' : '#8b949e',
+                    fontSize: '11px',
+                    fontWeight: 600,
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
                     gap: 4,
                   }}
-                  title="Auto scroll to bottom"
                 >
-                  <ArrowDown size={13} />
+                  <ArrowDown size={12} />
                   <span>Auto-scroll</span>
                 </button>
 
-                {/* Clear local logs */}
+                {/* Copy logs */}
                 <button
-                  onClick={() => setLogs([])}
+                  onClick={() => handleCopy(logs.join('\n'), 'logs')}
+                  title="Copy full logs"
                   style={{
-                    padding: '5px 8px',
-                    borderRadius: 6,
                     background: '#0d1117',
                     border: '1px solid #30363d',
                     color: '#8b949e',
+                    padding: '5px 9px',
+                    borderRadius: 6,
+                    fontSize: '11px',
                     cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
                   }}
-                  title="Clear console window"
                 >
-                  <Trash2 size={13} />
+                  {copiedText === 'logs' ? <Check size={12} color="#34d399" /> : <Copy size={12} />}
+                  <span>{copiedText === 'logs' ? 'Copied' : 'Copy'}</span>
                 </button>
 
                 {/* Download logs */}
                 <button
                   onClick={handleDownloadLogs}
+                  title="Download logs as text"
                   style={{
-                    padding: '5px 8px',
-                    borderRadius: 6,
                     background: '#0d1117',
                     border: '1px solid #30363d',
                     color: '#8b949e',
-                    cursor: 'pointer',
-                  }}
-                  title="Download logs to text file"
-                >
-                  <Download size={13} />
-                </button>
-
-                {/* Open in New Tab Button */}
-                <button
-                  onClick={() => openInNewTab(logModalTarget.serverId, logModalTarget.serverName, logModalTarget.container)}
-                  style={{
-                    padding: '5px 10px',
+                    padding: '5px 9px',
                     borderRadius: 6,
-                    background: '#0d1117',
-                    border: '1px solid #30363d',
-                    color: '#38bdf8',
+                    fontSize: '11px',
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 5,
-                    fontSize: '12px',
-                    fontWeight: 500,
+                    gap: 4,
                   }}
-                  title="Open live logs in new browser tab to monitor simultaneously"
                 >
-                  <ExternalLink size={13} />
-                  <span>New Tab</span>
+                  <Download size={12} />
                 </button>
 
-                {/* Maximize toggle */}
+                {/* Clear buffer */}
                 <button
-                  onClick={() => setIsMaximized(!isMaximized)}
+                  onClick={() => setLogs([])}
+                  title="Clear log viewer"
                   style={{
-                    padding: '5px 8px',
-                    borderRadius: 6,
                     background: '#0d1117',
                     border: '1px solid #30363d',
                     color: '#8b949e',
+                    padding: '5px 9px',
+                    borderRadius: 6,
+                    fontSize: '11px',
                     cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
                   }}
-                  title={isMaximized ? 'Restore size' : 'Maximize'}
+                >
+                  <Trash2 size={12} />
+                </button>
+
+                {/* Maximize / Restore */}
+                <button
+                  onClick={() => setIsMaximized(!isMaximized)}
+                  title={isMaximized ? 'Restore window size' : 'Maximize window'}
+                  style={{
+                    background: '#0d1117',
+                    border: '1px solid #30363d',
+                    color: '#8b949e',
+                    padding: '5px 9px',
+                    borderRadius: 6,
+                    fontSize: '11px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
                 >
                   {isMaximized ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
                 </button>
@@ -1042,52 +1400,58 @@ export const ContainerDashboard: React.FC = () => {
                 {/* Close modal */}
                 <button
                   onClick={handleCloseLogs}
+                  title="Close viewer"
                   style={{
-                    padding: '5px 8px',
-                    borderRadius: 6,
-                    background: 'rgba(248, 113, 113, 0.15)',
-                    border: '1px solid rgba(248, 113, 113, 0.3)',
+                    background: '#0d1117',
+                    border: '1px solid #30363d',
                     color: '#f87171',
+                    padding: '5px 9px',
+                    borderRadius: 6,
+                    fontSize: '11px',
                     cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
                   }}
-                  title="Close logs"
                 >
                   <X size={14} />
                 </button>
               </div>
             </div>
 
-            {/* Modal Body: Log Terminal Screen */}
+            {/* Terminal Body */}
             <div
               ref={logContainerRef}
               style={{
                 flex: 1,
-                padding: '16px',
                 overflowY: 'auto',
-                fontFamily: '"Fira Code", "Cascadia Code", Consolas, Monaco, monospace',
+                padding: '16px 20px',
+                fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
                 fontSize: '12.5px',
-                lineHeight: '1.6',
+                lineHeight: 1.65,
+                background: '#090d13',
                 color: '#e6edf3',
-                background: '#010409',
-                whiteSpace: 'pre-wrap',
                 wordBreak: 'break-all',
+                whiteSpace: 'pre-wrap',
               }}
             >
-              {logs.length === 0 ? (
-                <div style={{ color: '#8b949e', padding: '20px 0', textAlign: 'center' }}>
-                  <Terminal size={32} style={{ opacity: 0.3, marginBottom: 8 }} />
-                  <div>Connected. Awaiting container log output...</div>
+              {filteredLogs.length === 0 ? (
+                <div style={{ color: '#6e7681', textAlign: 'center', padding: '60px 0' }}>
+                  {streamStatus === 'connecting' ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+                      <RefreshCw size={24} className="spin-animation" style={{ color: '#38bdf8' }} />
+                      <span>Connecting to SSH live stream for {logModalTarget.container.name}...</span>
+                    </div>
+                  ) : logFilterQuery ? (
+                    <span>No log lines matching "{logFilterQuery}"</span>
+                  ) : (
+                    <span>Streaming active. Waiting for container log output...</span>
+                  )}
                 </div>
               ) : (
                 filteredLogs.map((line, idx) => {
-                  const isErr = /error|fatal|fail|panic|exception/i.test(line);
-                  const isWarn = /warn|warning/i.test(line);
-                  const isInfo = /info|notice/i.test(line);
-
-                  let color = '#c9d1d9';
-                  if (isErr) color = '#ff7b72';
-                  else if (isWarn) color = '#d29922';
-                  else if (isInfo) color = '#79c0ff';
+                  const isError = line.toLowerCase().includes('error') || line.toLowerCase().includes('err') || line.toLowerCase().includes('fatal');
+                  const isWarn = line.toLowerCase().includes('warn');
+                  const isInfo = line.toLowerCase().includes('info');
 
                   return (
                     <div
@@ -1097,16 +1461,16 @@ export const ContainerDashboard: React.FC = () => {
                         alignItems: 'flex-start',
                         gap: 12,
                         padding: '1px 0',
-                        color,
+                        color: isError ? '#f87171' : isWarn ? '#fbbf24' : isInfo ? '#38bdf8' : '#c9d1d9',
                       }}
                     >
                       <span
                         style={{
-                          color: '#484f58',
                           userSelect: 'none',
-                          minWidth: 42,
-                          textAlign: 'right',
+                          color: '#484f58',
                           fontSize: '11px',
+                          minWidth: '40px',
+                          textAlign: 'right',
                         }}
                       >
                         {idx + 1}
@@ -1119,7 +1483,7 @@ export const ContainerDashboard: React.FC = () => {
               <div ref={logEndRef} />
             </div>
 
-            {/* Modal Footer status bar */}
+            {/* Terminal Status Bar */}
             <div
               style={{
                 padding: '8px 18px',
@@ -1128,18 +1492,29 @@ export const ContainerDashboard: React.FC = () => {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                fontSize: '11px',
+                fontSize: '11.5px',
                 color: '#8b949e',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                <span>Lines: {logs.length}</span>
-                {logFilterQuery && <span>Filtered: {filteredLogs.length}</span>}
-                <span>Buffer: {tailCount} tail + live follow</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <span>
+                  Lines buffered: <strong style={{ color: '#f0f6fc' }}>{logs.length}</strong>
+                  {logFilterQuery && ` (Matching: ${filteredLogs.length})`}
+                </span>
+                <span>
+                  Target Node: <strong style={{ color: '#f0f6fc' }}>{logModalTarget.serverName}</strong>
+                </span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Clock size={11} />
-                <span>Active SSE Connection</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span
+                  style={{
+                    width: 7,
+                    height: 7,
+                    borderRadius: '50%',
+                    background: streamStatus === 'live' ? '#34d399' : '#f87171',
+                  }}
+                />
+                <span>SSE Protocol Connected</span>
               </div>
             </div>
           </div>

@@ -236,6 +236,7 @@ class UserCreate(BaseModel):
 
 
 class UserUpdate(BaseModel):
+    username: Optional[str] = None
     email: Optional[str] = None
     role: Optional[str] = None
     is_active: Optional[bool] = None
@@ -388,3 +389,8 @@ class LLMProviderOut(BaseModel):
     active_model: str
     active_base_url: Optional[str] = None
     available_providers: List[str]
+
+
+class ContainerTagRequest(BaseModel):
+    tag: str
+

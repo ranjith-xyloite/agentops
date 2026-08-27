@@ -7,6 +7,7 @@ import {
 import { Project, Environment, Server as ServerType, PreflightCheckResult, ProjectDeployment } from '../types';
 import { runPreflightCheckApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { PaginationControls } from './PaginationControls';
 
 interface WorkflowDeployerProps {
   projects: Project[];
@@ -51,9 +52,11 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
   const [selectedComponent, setSelectedComponent] = useState<string>('frontend');
   const [targetBranch, setTargetBranch] = useState<string>('');
 
-  // Workflow Overview Filter State
+  // Workflow Overview Filter & Pagination State
   const [filterProjectId, setFilterProjectId] = useState<number | 'ALL'>('ALL');
   const [filterEnvId, setFilterEnvId] = useState<number | 'ALL'>('ALL');
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(5);
 
   // Pre-flight check state
   const [isChecking, setIsChecking] = useState(false);
@@ -802,7 +805,10 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
                 className="chat-input"
                 style={{ padding: '4px 8px', fontSize: '12px', minWidth: '150px' }}
                 value={filterProjectId}
-                onChange={(e) => setFilterProjectId(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value))}
+                onChange={(e) => {
+                  setFilterProjectId(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value));
+                  setCurrentPage(1);
+                }}
               >
                 <option value="ALL">All Projects ({projects.length})</option>
                 {projects.map((p) => (
@@ -820,7 +826,10 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
                 className="chat-input"
                 style={{ padding: '4px 8px', fontSize: '12px', minWidth: '140px' }}
                 value={filterEnvId}
-                onChange={(e) => setFilterEnvId(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value))}
+                onChange={(e) => {
+                  setFilterEnvId(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value));
+                  setCurrentPage(1);
+                }}
               >
                 <option value="ALL">All Environments</option>
                 {environments.map((env) => (
@@ -840,6 +849,7 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
                 onClick={() => {
                   setFilterProjectId('ALL');
                   setFilterEnvId('ALL');
+                  setCurrentPage(1);
                 }}
               >
                 <X size={12} /> Clear Filter
@@ -920,7 +930,12 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
               );
             }
 
-            return displayedProjects.map((p) => {
+            const paginatedProjects = displayedProjects.slice(
+              (currentPage - 1) * pageSize,
+              (currentPage - 1) * pageSize + pageSize
+            );
+
+            return paginatedProjects.map((p) => {
               const allDeployments = p.deployments || [];
               const envMap: { [envId: number]: ProjectDeployment[] } = {};
               allDeployments.forEach((d) => {
@@ -1251,6 +1266,35 @@ export const WorkflowDeployer: React.FC<WorkflowDeployerProps> = ({
           });
         })()}
         </div>
+
+        {/* Pagination Footer */}
+        {(() => {
+          const matchingProjectsCount = projects.filter((p) => {
+            if (filterProjectId !== 'ALL' && p.id !== filterProjectId) return false;
+            if (filterEnvId !== 'ALL') {
+              const hasEnv = (p.deployments || []).some((d) => d.environment_id === filterEnvId);
+              if (!hasEnv) return false;
+            }
+            return true;
+          }).length;
+
+          if (matchingProjectsCount === 0) return null;
+
+          return (
+            <PaginationControls
+              currentPage={currentPage}
+              totalItems={matchingProjectsCount}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(size) => {
+                setPageSize(size);
+                setCurrentPage(1);
+              }}
+              pageSizeOptions={[3, 5, 10, 20]}
+              itemLabel="projects"
+            />
+          );
+        })()}
       </div>
     </div>
   );

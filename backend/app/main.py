@@ -11,7 +11,7 @@ from app.config import settings
 from app.database.session import engine, AsyncSessionLocal
 from app.models.models import (
     Base, Project, Environment, Server, ProjectDeployment,
-    User, UserRole, ProjectMember
+    User, UserRole, ProjectMember, ContainerTag
 )
 from app.core.security import hash_password
 from app.core.logging_config import setup_structured_logging

@@ -23,10 +23,16 @@ class Orchestrator:
                 parsed.missing_information = parsed.missing_information or []
                 parsed.missing_information.append("tool_not_allowed")
 
-        # Safety override: mutating tools MUST always require confirmation,
+        # Safety override: mutating tools and typed deployment commands MUST always require confirmation,
         # regardless of what the LLM returned.
         MUTATING_TOOLS = {"deploy_frontend", "deploy_backend", "restart_container"}
-        if parsed.tool in MUTATING_TOOLS:
+        msg_lower = user_message.lower()
+        is_mutating = (
+            parsed.tool in MUTATING_TOOLS
+            or any(w in msg_lower for w in ["deploy", "restart", "rollback", "reboot", "stop", "recreate", "shutdown"])
+            or (parsed.steps and any(s.tool in MUTATING_TOOLS for s in parsed.steps))
+        )
+        if is_mutating:
             parsed.requires_confirmation = True
 
         # Evaluate DevOps Policies & Deployment Guardrails

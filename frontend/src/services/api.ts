@@ -106,6 +106,7 @@ export async function createUserApi(data: {
 export async function updateUserApi(
   userId: number,
   data: Partial<{
+    username?: string;
     email: string;
     role: string;
     is_active: boolean;
@@ -504,4 +505,17 @@ export function subscribeToContainerLogs(
   return () => {
     eventSource.close();
   };
+}
+
+export async function addContainerTagApi(serverId: number, containerName: string, tag: string): Promise<any> {
+  return request(`${API_BASE}/containers/${serverId}/${encodeURIComponent(containerName)}/tags`, {
+    method: 'POST',
+    body: JSON.stringify({ tag }),
+  });
+}
+
+export async function removeContainerTagApi(serverId: number, containerName: string, tag: string): Promise<any> {
+  return request(`${API_BASE}/containers/${serverId}/${encodeURIComponent(containerName)}/tags/${encodeURIComponent(tag)}`, {
+    method: 'DELETE',
+  });
 }

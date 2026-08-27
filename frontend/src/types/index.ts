@@ -281,6 +281,7 @@ export interface DockerContainer {
   ports: string;
   created_at: string;
   running: boolean;
+  tags?: string[];
 }
 
 export interface ServerContainers {

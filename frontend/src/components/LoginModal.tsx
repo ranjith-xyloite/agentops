@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
-import { Shield, Lock, User, Sparkles, AlertCircle } from 'lucide-react';
+import { Shield, Lock, User, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { UserRole } from '../types';
 
 export const LoginModal: React.FC = () => {
-  const { login, demoLogin, isAuthenticated } = useAuth();
+  const { login, isAuthenticated } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -20,19 +19,7 @@ export const LoginModal: React.FC = () => {
     try {
       await login(username, password);
     } catch (err: any) {
-      setError(err.message || 'Login failed');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleDemo = async (role: UserRole) => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      await demoLogin(role);
-    } catch (err: any) {
-      setError(err.message || 'Demo login failed');
+      setError(err.message || 'Login failed. Please check your credentials.');
     } finally {
       setIsLoading(false);
     }
@@ -66,53 +53,6 @@ export const LoginModal: React.FC = () => {
           <div>
             <h2 style={{ fontSize: '18px', fontWeight: 700 }}>XyOps Authentication</h2>
             <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Xyloite Technologies DevOps & Multi-Tenancy Portal</p>
-          </div>
-        </div>
-
-        {/* Quick 1-Click Demo Login Selector */}
-        <div style={{
-          background: 'var(--bg-primary)',
-          border: '1px solid var(--border-subtle)',
-          borderRadius: 'var(--radius-md)',
-          padding: '14px',
-          marginBottom: '20px'
-        }}>
-          <div style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--accent-cyan)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Sparkles size={13} /> Quick Demo Logins (1-Click)
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              style={{ display: 'flex', flexDirection: 'column', padding: '8px 4px', gap: 2 }}
-              onClick={() => handleDemo('admin')}
-              disabled={isLoading}
-            >
-              <span style={{ fontWeight: 700, color: 'var(--status-warning)' }}>Admin</span>
-              <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Full Access</span>
-            </button>
-
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              style={{ display: 'flex', flexDirection: 'column', padding: '8px 4px', gap: 2 }}
-              onClick={() => handleDemo('operator')}
-              disabled={isLoading}
-            >
-              <span style={{ fontWeight: 700, color: 'var(--status-running)' }}>Operator</span>
-              <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Deploy & Fleet</span>
-            </button>
-
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              style={{ display: 'flex', flexDirection: 'column', padding: '8px 4px', gap: 2 }}
-              onClick={() => handleDemo('viewer')}
-              disabled={isLoading}
-            >
-              <span style={{ fontWeight: 700, color: 'var(--status-info)' }}>Viewer</span>
-              <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Read Only</span>
-            </button>
           </div>
         </div>
 

@@ -198,3 +198,13 @@ class PolicyRule(Base):
     require_double_confirm = Column(Boolean, default=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class ContainerTag(Base):
+    __tablename__ = "container_tags"
+
+    id = Column(Integer, primary_key=True)
+    server_id = Column(Integer, ForeignKey("servers.id", ondelete="CASCADE"), nullable=False, index=True)
+    container_name = Column(String(150), nullable=False, index=True)
+    tag = Column(String(100), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
